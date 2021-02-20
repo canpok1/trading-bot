@@ -4,51 +4,30 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 	ex "trading-bot/pkg/domain/exchange"
 	"trading-bot/pkg/domain/model"
 	repo "trading-bot/pkg/domain/repository"
 )
 
+// Sample サンプル戦略
 type Sample struct {
 	ExClient   ex.Client
 	RepoClient repo.Client
 }
 
-func (s *Sample) Run(ctx context.Context, interval time.Duration) error {
-	log.Println("start sample run")
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if err := s.run(); err != nil {
-				return fmt.Errorf("failed to Run; %w", err)
-			}
-		case <-ctx.Done():
-			log.Println("end sample run")
-			return nil
-		}
-	}
-}
-
-func (s *Sample) run() error {
+// Run 取引処理
+func (s *Sample) Run(ctx context.Context) error {
 	rate, err := s.ExClient.GetOrderRate(model.Buy, model.BtcJpy)
 	if err != nil {
-		log.Printf("failed to get order rate; %v", err)
-	} else {
-		log.Printf("rate = %#v\n", rate)
+		return fmt.Errorf("failed to get order rate; %w", err)
 	}
 
 	balance, err := s.ExClient.GetAccountBalance()
 	if err != nil {
-		log.Printf("failed to get account balance; %v", err)
-	} else {
-		log.Printf("balance = %#v\n", balance)
+		return fmt.Errorf("failed to get account balance; %w", err)
 	}
 
-	//s.RepoClient.Update()
+	log.Printf("rate: %s %.3f, balance: JPY:%.2f,BTC:%.2f\n", rate.Pair, rate.Rate, balance.Jpy, balance.Btc)
 
 	return nil
 }

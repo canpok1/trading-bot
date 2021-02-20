@@ -24,3 +24,16 @@ type Balance struct {
 	Jpy float32
 	Btc float32
 }
+
+// 注文
+type Order struct {
+	ID   uint64
+	Type OrderType
+	Pair CurrencyPair
+}
+
+// ポジション
+type Position struct {
+	OpenerOrder *Order
+	CloserOrder *Order
+}

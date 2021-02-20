@@ -1,6 +1,9 @@
 package mysql
 
-import "log"
+import (
+	"log"
+	"trading-bot/pkg/domain/model"
+)
 
 type Client struct {
 	UserName string
@@ -8,7 +11,22 @@ type Client struct {
 	DBName   string
 }
 
-func (c *Client) Update() error {
-	log.Println("*** Unimplemented mysql.Client#Update ***")
+func (c *Client) GetOpenPositions() ([]model.Position, error) {
+	log.Println("*** Unimplemented mysql.Client#GetOpenPositions ***")
+	return nil, nil
+}
+
+func (c *Client) GetOrders() error {
+	log.Println("*** Unimplemented mysql.Client#GetOrders ***")
+	return nil
+}
+
+func (c *Client) UpsertOrders() error {
+	log.Println("*** Unimplemented mysql.Client#UpsertOrders ***")
+	return nil
+}
+
+func (c *Client) SaveProfit(jpy float32) error {
+	log.Println("*** Unimplemented mysql.Client#SaveProfit ***")
 	return nil
 }
