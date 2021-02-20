@@ -1,14 +1,26 @@
 package model
 
-type OrderType int
+type OrderType string
 
 const (
-	Sell OrderType = iota
-	Buy
+	Sell OrderType = "sell"
+	Buy  OrderType = "buy"
 )
 
-type CurrencyPair int
+type CurrencyPair string
 
 const (
-	BtcJpy CurrencyPair = iota
+	BtcJpy CurrencyPair = "BTC/JPY"
 )
+
+// 注文レート
+type OrderRate struct {
+	Pair CurrencyPair
+	Rate float32
+}
+
+// 残高
+type Balance struct {
+	Jpy float32
+	Btc float32
+}

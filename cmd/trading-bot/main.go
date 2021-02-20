@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 	"trading-bot/pkg/infrastructure/coincheck"
 	"trading-bot/pkg/infrastructure/mysql"
 	"trading-bot/pkg/usecase"
@@ -45,7 +46,7 @@ func main() {
 	}
 
 	s := usecase.MakeStrategy(usecase.Sample, ec, rc)
-	if err := s.Run(context.Background()); err != nil {
+	if err := s.Run(context.Background(), 10*time.Second); err != nil {
 		log.Printf("%v\n", err)
 	}
 

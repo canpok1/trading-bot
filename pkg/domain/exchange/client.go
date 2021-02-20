@@ -5,11 +5,6 @@ import (
 )
 
 type Client interface {
-	GetOrderRate(model.OrderType, model.CurrencyPair) *ResponseGetOrderRate
-}
-
-type ResponseGetOrderRate struct {
-	Rate   int
-	Price  int
-	Amount int
+	GetOrderRate(model.OrderType, model.CurrencyPair) (*model.OrderRate, error)
+	GetAccountBalance() (*model.Balance, error)
 }

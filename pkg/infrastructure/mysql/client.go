@@ -9,7 +9,6 @@ type Client struct {
 }
 
 func (c *Client) Update() error {
-	log.Println("start mysql.Client Update")
-	log.Println("end mysql.Client Update")
+	log.Println("*** Unimplemented mysql.Client#Update ***")
 	return nil
 }
