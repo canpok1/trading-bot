@@ -54,7 +54,7 @@ type Order struct {
 	Amount       float32
 	Rate         *float32
 	StopLossRate *float32
-	CreatedAt    time.Time
+	OpenAt       time.Time
 }
 
 // OrderTransaction 注文履歴

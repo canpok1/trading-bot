@@ -180,7 +180,7 @@ func (c *Client) PostOrder(o *model.NewOrder) (*model.Order, error) {
 		Amount:       toFloat32(res.Amount, 0),
 		Rate:         toFloat32Nullable(res.Rate, nil),
 		StopLossRate: toFloat32Nullable(res.StopLossRate, nil),
-		CreatedAt:    res.CreatedAt,
+		OpenAt:       res.CreatedAt,
 	}, nil
 }
 

@@ -41,11 +41,7 @@ func main() {
 	}
 
 	ec := &coincheck.Client{APIAccessKey: conf.Exchange.AccessKey, APISecretKey: conf.Exchange.SecretKey}
-	rc := &mysql.Client{
-		UserName: conf.DB.UserName,
-		Password: conf.DB.Password,
-		DBName:   conf.DB.Name,
-	}
+	rc := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
 	s := usecase.MakeStrategy(usecase.StrategyType(conf.StrategyName), ec, rc)
 	if s == nil {
 		log.Fatalf("strategy name is unknown; name = %s", conf.StrategyName)
