@@ -27,7 +27,7 @@ func (s *Sample) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to get account balance; %w", err)
 	}
 
-	log.Printf("rate: %s %.3f, balance: JPY:%.2f,BTC:%.2f\n", rate.Pair, rate.Rate, balance.Jpy, balance.Btc)
+	log.Printf("rate: %s %.3f, balance: JPY:%.2f,BTC:%.2f\n", rate.Pair.String(), rate.Rate, balance.Jpy, balance.Btc)
 
 	return nil
 }
