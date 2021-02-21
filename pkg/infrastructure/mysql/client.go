@@ -7,12 +7,15 @@ import (
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
+// Client MySQL用クライアント
 type Client struct {
 	db *gorm.DB
 }
 
+// NewClient MySQL用クライアントの生成
 func NewClient(userName, password, dbHost string, dbPort int, dbName string) *Client {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8&parseTime=True&loc=Local", userName, password, dbHost, dbPort, dbName)
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
@@ -31,13 +34,35 @@ func (c *Client) GetOpenPositions() ([]model.Position, error) {
 }
 
 func (c *Client) GetOrders() error {
-	log.Println("*** Unimplemented mysql.Client#GetOrders ***")
 	return nil
 }
 
-func (c *Client) UpsertOrders() error {
-	log.Println("*** Unimplemented mysql.Client#UpsertOrders ***")
-	return nil
+// UpsertOrders 注文情報の新規登録・更新
+func (c *Client) UpsertOrders(orders []model.Order) error {
+	if len(orders) == 0 {
+		return nil
+	}
+
+	records := []Order{}
+	for _, order := range orders {
+		records = append(records, *NewOrder(&order))
+	}
+
+	return c.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&records).Error
+}
+
+// UpdateContracts 約定注文情報の更新
+func (c *Client) UpdateContracts(contracts []model.Contract) error {
+	if len(contracts) == 0 {
+		return nil
+	}
+
+	ids := []uint64{}
+	for _, contract := range contracts {
+		ids = append(ids, contract.OrderID)
+	}
+
+	return c.db.Model(Order{}).Where("id IN ?", ids).Updates(Order{Status: 1}).Error
 }
 
 func (c *Client) SaveProfit(jpy float32) error {

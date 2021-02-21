@@ -57,8 +57,12 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := s.Run(ctx); err != nil {
-					log.Printf("failed to Run; %v\n", err)
+				if err := s.Tick(ctx); err != nil {
+					log.Printf("failed to Tick; %v\n", err)
+					return
+				}
+				if err := s.Trade(ctx); err != nil {
+					log.Printf("failed to Trade; %v\n", err)
 					return
 				}
 			case <-ctx.Done():

@@ -9,7 +9,10 @@ import (
 
 // Strategy 戦略
 type Strategy interface {
-	Run(ctx context.Context) error
+	// Tick 情報更新
+	Tick(ctx context.Context) error
+	// Trade 取引
+	Trade(ctx context.Context) error
 }
 
 // StrategyType 戦略種別

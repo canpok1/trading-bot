@@ -12,8 +12,29 @@ type FollowUptrendStrategy struct {
 	RepoClient repo.Client
 }
 
-// Run 取引実施
-func (s *FollowUptrendStrategy) Run(ctx context.Context) error {
+// Tick 情報更新
+func (s *FollowUptrendStrategy) Tick(ctx context.Context) error {
+	contracts, err := s.ExClient.GetContracts()
+	if err != nil {
+		return err
+	}
+	if err := s.RepoClient.UpdateContracts(contracts); err != nil {
+		return err
+	}
+
+	orders, err := s.ExClient.GetOpenOrders()
+	if err != nil {
+		return err
+	}
+	if err := s.RepoClient.UpsertOrders(orders); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Trade 取引実施
+func (s *FollowUptrendStrategy) Trade(ctx context.Context) error {
 	// 各種情報を更新
 
 	// if ポジションを持ってない {

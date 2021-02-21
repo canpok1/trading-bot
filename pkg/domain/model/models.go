@@ -55,19 +55,13 @@ type Order struct {
 	Rate         *float32
 	StopLossRate *float32
 	OpenAt       time.Time
-}
-
-// OrderTransaction 注文履歴
-type OrderTransaction struct {
-	OrderID   uint64
-	CreatedAt time.Time
-	Canceled  bool
-	Contract  *Contract
+	Canceled     bool
+	Contract     *Contract
 }
 
 // Contract 約定
 type Contract struct {
-	ID          uint64
+	OrderID     uint64
 	Rate        float32
 	Currency1   CurrencyType
 	Fund1       float32

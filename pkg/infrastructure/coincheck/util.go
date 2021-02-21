@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"trading-bot/pkg/domain/model"
 )
 
 func (c *Client) makeURL(endpoint string, queries map[string]string) (*url.URL, error) {
@@ -115,4 +116,12 @@ func toRequestString(v *float32) string {
 		return ""
 	}
 	return fmt.Sprintf("%.3f", *v)
+}
+
+func toCurrencyPair(s string) model.CurrencyPair {
+	splited := strings.Split(s, "_")
+	return model.CurrencyPair{
+		Key:        model.CurrencyType(splited[0]),
+		Settlement: model.CurrencyType(splited[1]),
+	}
 }
