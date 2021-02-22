@@ -4,18 +4,25 @@ import (
 	"context"
 	"log"
 	"time"
+	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/infrastructure/coincheck"
+	"trading-bot/pkg/infrastructure/memory"
 	"trading-bot/pkg/infrastructure/mysql"
 	"trading-bot/pkg/usecase"
 
 	"github.com/kelseyhightower/envconfig"
+	"golang.org/x/sync/errgroup"
 )
 
 type Config struct {
-	StrategyName    string `split_words:"true" required:"true"`
-	IntervalSeconds int    `split_words:"true" required:"true"`
-	Exchange        Exchange
-	DB              DB
+	StrategyName         string `split_words:"true" required:"true"`
+	TradeIntervalSeconds int    `split_words:"true" required:"true"`
+	WatchIntervalSeconds int    `split_words:"true" required:"true"`
+	RateHistorySize      int    `split_words:"true" required:"true"`
+	TargetCurrency       string `split_words:"true" required:"true"`
+	WarmupTimeSeconds    int    `split_words:"true" required:"true"`
+	Exchange             Exchange
+	DB                   DB
 }
 
 type Exchange struct {
@@ -40,34 +47,73 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	ec := &coincheck.Client{APIAccessKey: conf.Exchange.AccessKey, APISecretKey: conf.Exchange.SecretKey}
-	rc := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
-	s := usecase.MakeStrategy(usecase.StrategyType(conf.StrategyName), ec, rc)
-	if s == nil {
+	exCli := &coincheck.Client{APIAccessKey: conf.Exchange.AccessKey, APISecretKey: conf.Exchange.SecretKey}
+	rateRepo := memory.NewRateRepository(conf.RateHistorySize)
+	orderRepo := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
+
+	watcher := usecase.NewRateWatcher(rateRepo, exCli, orderRepo)
+	strategy := usecase.MakeStrategy(
+		usecase.StrategyType(conf.StrategyName),
+		&usecase.StrategyParams{
+			ExCli:     exCli,
+			OrderRepo: orderRepo,
+			RateRepo:  rateRepo,
+			Pair: &model.CurrencyPair{
+				Key:        model.CurrencyType(conf.TargetCurrency),
+				Settlement: model.JPY,
+			},
+		},
+	)
+
+	if strategy == nil {
 		log.Fatalf("strategy name is unknown; name = %s", conf.StrategyName)
 	}
+
+	pair := model.CurrencyPair{
+		Key:        model.CurrencyType(conf.TargetCurrency),
+		Settlement: model.JPY,
+	}
+
 	log.Printf("strategy: %s\n", conf.StrategyName)
-	log.Printf("interval: %dsec\n", conf.IntervalSeconds)
+	log.Printf("trade interval: %dsec\n", conf.TradeIntervalSeconds)
+	log.Printf("watch interval: %dsec\n", conf.WatchIntervalSeconds)
+	log.Printf("target: %s\n", conf.TargetCurrency)
 	log.Println("======================================")
 
-	ctx := context.Background()
-	func() {
-		ticker := time.NewTicker(time.Duration(conf.IntervalSeconds) * time.Second)
+	errGroup, ctx := errgroup.WithContext(context.Background())
+	errGroup.Go(func() error {
+		ticker := time.NewTicker(time.Duration(conf.WatchIntervalSeconds) * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				if err := s.Tick(ctx); err != nil {
-					log.Printf("failed to Tick; %v\n", err)
-					return
-				}
-				if err := s.Trade(ctx); err != nil {
-					log.Printf("failed to Trade; %v\n", err)
-					return
+				if err := watcher.Watch(&pair); err != nil {
+					return err
 				}
 			case <-ctx.Done():
-				return
+				return nil
 			}
 		}
-	}()
+	})
+	errGroup.Go(func() error {
+		log.Printf("warming up (%d sec) ...\n", conf.WarmupTimeSeconds)
+		time.Sleep(time.Duration(conf.WarmupTimeSeconds) * time.Second)
+
+		ticker := time.NewTicker(time.Duration(conf.TradeIntervalSeconds) * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := strategy.Trade(ctx); err != nil {
+					return err
+				}
+			case <-ctx.Done():
+				return nil
+			}
+		}
+	})
+
+	if err := errGroup.Wait(); err != nil {
+		log.Fatalf("error occured, %v", err)
+	}
 }

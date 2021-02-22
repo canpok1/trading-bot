@@ -3,11 +3,12 @@ package coincheck
 import "time"
 
 type NewOrder struct {
-	Pair         string `json:"pair"`
-	OrderType    string `json:"order_type"`
-	Rate         string `json:"rate,omitempty"`
-	Amount       string `json:"amount,omitempty"`
-	StopLossRate string `json:"stop_loss_rate"`
+	Pair            string `json:"pair"`
+	OrderType       string `json:"order_type"`
+	Rate            string `json:"rate,omitempty"`
+	Amount          string `json:"amount,omitempty"`
+	MarketBuyAmount string `json:"market_buy_amount,omitempty"`
+	StopLossRate    string `json:"stop_loss_rate,omitempty"`
 }
 
 type RegisteredOrder struct {

@@ -64,7 +64,7 @@ func (c *Client) request(method string, u *url.URL, reqBody string, resJSON inte
 		return fmt.Errorf("failed to parse response body, url: %s, body: %s; error: %w", u.String(), body, err)
 	}
 	if !result.Success {
-		return fmt.Errorf("response is error, url: %s, body: %s, message: %s;", u.String(), body, result.Error)
+		return fmt.Errorf("response is error, url: %s, reqBody: %s, resBody: %s, message: %s;", u.String(), reqBody, body, result.Error)
 	}
 
 	return json.Unmarshal(body, resJSON)

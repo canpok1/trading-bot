@@ -3,14 +3,13 @@ package usecase
 import (
 	"context"
 	ex "trading-bot/pkg/domain/exchange"
+	"trading-bot/pkg/domain/model"
 	repo "trading-bot/pkg/domain/repository"
 	"trading-bot/pkg/usecase/strategy"
 )
 
 // Strategy 戦略
 type Strategy interface {
-	// Tick 情報更新
-	Tick(ctx context.Context) error
 	// Trade 取引
 	Trade(ctx context.Context) error
 }
@@ -25,13 +24,21 @@ const (
 	FollowUptrend StrategyType = "follow_uptrend"
 )
 
+// StrategyParams 戦略用パラメータ
+type StrategyParams struct {
+	ExCli     ex.Client
+	OrderRepo repo.OrderRepository
+	RateRepo  repo.RateRepository
+	Pair      *model.CurrencyPair
+}
+
 // MakeStrategy 戦略を生成
-func MakeStrategy(t StrategyType, exCli ex.Client, repoCli repo.Client) Strategy {
+func MakeStrategy(t StrategyType, p *StrategyParams) Strategy {
 	switch t {
 	case Sample:
-		return &strategy.Sample{ExClient: exCli, RepoClient: repoCli}
+		return strategy.NewSample(p.ExCli, p.Pair)
 	case FollowUptrend:
-		return &strategy.FollowUptrendStrategy{ExClient: exCli, RepoClient: repoCli}
+		return strategy.NewFollowUptrendStrategy(p.ExCli, p.OrderRepo, p.RateRepo, p.Pair)
 	default:
 		return nil
 	}

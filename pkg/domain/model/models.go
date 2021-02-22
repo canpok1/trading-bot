@@ -2,7 +2,6 @@ package model
 
 import (
 	"fmt"
-	"time"
 )
 
 // OrderType 注文種別
@@ -23,7 +22,7 @@ func (p *CurrencyPair) String() string {
 }
 
 // LiquidityType 流動性種別
-type LiquidityType string
+type LiquidityType int
 
 // OrderRate 注文レート
 type OrderRate struct {
@@ -39,12 +38,16 @@ type Balance struct {
 
 // NewOrder 新規注文
 type NewOrder struct {
-	Type         OrderType
-	Pair         CurrencyPair
-	Amount       *float32
-	Rate         *float32
-	StopLossRate *float32
+	Type            OrderType
+	Pair            CurrencyPair
+	Amount          *float32
+	Rate            *float32
+	MarketBuyAmount *float32
+	StopLossRate    *float32
 }
+
+// OrderStatus 注文ステータス
+type OrderStatus int
 
 // Order 注文
 type Order struct {
@@ -54,23 +57,25 @@ type Order struct {
 	Amount       float32
 	Rate         *float32
 	StopLossRate *float32
-	OpenAt       time.Time
-	Canceled     bool
-	Contract     *Contract
+	Status       OrderStatus
 }
+
+// ContractSide 約定サイド
+type ContractSide int
 
 // Contract 約定
 type Contract struct {
-	OrderID     uint64
-	Rate        float32
-	Currency1   CurrencyType
-	Fund1       float32
-	Currency2   CurrencyType
-	Fund2       float32
-	FeeCurrency CurrencyType
-	Fee         float32
-	Liquidity   LiquidityType
-	Side        OrderType
+	ID               uint64
+	OrderID          uint64
+	Rate             float32
+	IncreaseCurrency CurrencyType
+	IncreaseAmount   float32
+	DecreaseCurrency CurrencyType
+	DecreaseAmount   float32
+	FeeCurrency      CurrencyType
+	Fee              float32
+	Liquidity        LiquidityType
+	Side             ContractSide
 }
 
 // Position ポジション

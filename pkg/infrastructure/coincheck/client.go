@@ -41,9 +41,7 @@ func (c *Client) GetOpenOrders() ([]model.Order, error) {
 			Amount:       toFloat32(o.PendingAmount, 0),
 			Rate:         toFloat32Nullable(o.Rate, nil),
 			StopLossRate: toFloat32Nullable(o.StopLossRate, nil),
-			OpenAt:       o.CreatedAt,
-			Canceled:     false,
-			Contract:     nil,
+			Status:       model.Open,
 		})
 	}
 	return orders, nil
@@ -62,24 +60,45 @@ func (c *Client) GetContracts() ([]model.Contract, error) {
 			return nil, fmt.Errorf("transaction has not 2 funds, funds: %v", t.Funds)
 		}
 
-		currencies := []model.CurrencyType{}
-		funds := []float32{}
+		var increaseCurrency, decreaseCurrency model.CurrencyType
+		var increaseAmount, decreaseAmount float32
 		for k, v := range t.Funds {
-			currencies = append(currencies, model.CurrencyType(k))
-			funds = append(funds, toFloat32(v, 0))
+			value := toFloat32(v, 0)
+			if value > 0.0 {
+				increaseCurrency = model.CurrencyType(k)
+				increaseAmount = value
+			} else {
+				decreaseCurrency = model.CurrencyType(k)
+				decreaseAmount = value
+			}
+		}
+
+		var liquidity model.LiquidityType
+		if t.Liquidity == "M" {
+			liquidity = model.Maker
+		} else {
+			liquidity = model.Taker
+		}
+
+		var side model.ContractSide
+		if t.Side == "buy" {
+			side = model.BuySide
+		} else {
+			side = model.SellSide
 		}
 
 		cc = append(cc, model.Contract{
-			OrderID:     t.OrderID,
-			Rate:        toFloat32(t.Rate, 0),
-			Currency1:   currencies[0],
-			Fund1:       funds[0],
-			Currency2:   currencies[1],
-			Fund2:       funds[1],
-			FeeCurrency: model.CurrencyType(t.FeeCurrency),
-			Fee:         toFloat32(t.Fee, 0),
-			Liquidity:   model.LiquidityType(t.Liquidity),
-			Side:        model.OrderType(t.Side),
+			ID:               t.ID,
+			OrderID:          t.OrderID,
+			Rate:             toFloat32(t.Rate, 0),
+			IncreaseCurrency: increaseCurrency,
+			IncreaseAmount:   increaseAmount,
+			DecreaseCurrency: decreaseCurrency,
+			DecreaseAmount:   decreaseAmount,
+			FeeCurrency:      model.CurrencyType(t.FeeCurrency),
+			Fee:              toFloat32(t.Fee, 0),
+			Liquidity:        liquidity,
+			Side:             side,
 		})
 	}
 	return cc, nil
@@ -98,7 +117,7 @@ func (c *Client) PostOrder(o *model.NewOrder) (*model.Order, error) {
 		Amount:       toFloat32(res.Amount, 0),
 		Rate:         toFloat32Nullable(res.Rate, nil),
 		StopLossRate: toFloat32Nullable(res.StopLossRate, nil),
-		OpenAt:       res.CreatedAt,
+		Status:       model.Open,
 	}, nil
 }
 

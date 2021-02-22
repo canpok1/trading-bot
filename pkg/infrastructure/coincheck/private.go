@@ -105,11 +105,12 @@ func (c *Client) postOrder(o *model.NewOrder) (*RegisteredOrder, error) {
 	}
 
 	body, err := json.Marshal(NewOrder{
-		Pair:         o.Pair.String(),
-		OrderType:    string(o.Type),
-		Rate:         toRequestString(o.Rate),
-		Amount:       toRequestString(o.Amount),
-		StopLossRate: toRequestString(o.StopLossRate),
+		Pair:            o.Pair.String(),
+		OrderType:       string(o.Type),
+		Rate:            toRequestString(o.Rate),
+		Amount:          toRequestString(o.Amount),
+		MarketBuyAmount: toRequestString(o.MarketBuyAmount),
+		StopLossRate:    toRequestString(o.StopLossRate),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request param, order: %v", o)

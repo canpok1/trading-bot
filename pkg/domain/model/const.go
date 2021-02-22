@@ -1,10 +1,14 @@
 package model
 
 const (
-	// Sell 売り注文
-	Sell OrderType = "sell"
-	// Buy 買い注文
+	// Buy 指値注文、現物取引、買い
 	Buy OrderType = "buy"
+	// Sell 指値注文、現物取引、売り
+	Sell OrderType = "sell"
+	// MarketBuy 成行注文、現物取引、買い
+	MarketBuy OrderType = "market_buy"
+	// MarketSell 成行注文、現物取引、売り
+	MarketSell OrderType = "market_sell"
 )
 
 const (
@@ -33,7 +37,23 @@ var (
 
 const (
 	// Taker Taker
-	Taker LiquidityType = "T"
+	Taker LiquidityType = iota
 	// Maker Maker
-	Maker LiquidityType = "M"
+	Maker LiquidityType = 1
+)
+
+const (
+	// Open open
+	Open OrderStatus = iota
+	// Closed closed
+	Closed
+	// Canceled canceled
+	Canceled
+)
+
+const (
+	// BuySide 買い
+	BuySide ContractSide = iota
+	// SellSide 売り
+	SellSide
 )

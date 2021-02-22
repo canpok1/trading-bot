@@ -28,12 +28,19 @@ func NewClient(userName, password, dbHost string, dbPort int, dbName string) *Cl
 	}
 }
 
-func (c *Client) GetOpenPositions() ([]model.Position, error) {
-	log.Println("*** Unimplemented mysql.Client#GetOpenPositions ***")
+func (c *Client) AddOrder(o *model.Order) error {
+	return nil
+}
+
+func (c *Client) GetOpenOrders() ([]model.Order, error) {
 	return nil, nil
 }
 
-func (c *Client) GetOrders() error {
+func (c *Client) UpdateOrderStatus(s model.OrderStatus) error {
+	return nil
+}
+
+func (c *Client) AddContract(co *model.Contract) error {
 	return nil
 }
 
@@ -63,9 +70,4 @@ func (c *Client) UpdateContracts(contracts []model.Contract) error {
 	}
 
 	return c.db.Model(Order{}).Where("id IN ?", ids).Updates(Order{Status: 1}).Error
-}
-
-func (c *Client) SaveProfit(jpy float32) error {
-	log.Println("*** Unimplemented mysql.Client#SaveProfit ***")
-	return nil
 }
