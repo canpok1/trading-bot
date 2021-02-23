@@ -15,9 +15,21 @@ type Client struct {
 	APISecretKey string
 }
 
+// GetStoreRate 注文レート取得
+func (c *Client) GetStoreRate(p *model.CurrencyPair) (*model.StoreRate, error) {
+	rate, err := c.getRate(p)
+	if err != nil {
+		return nil, err
+	}
+	return &model.StoreRate{
+		Pair: *p,
+		Rate: rate,
+	}, nil
+}
+
 // GetOrderRate 注文レート取得
-func (c *Client) GetOrderRate(t model.OrderType, p model.CurrencyPair) (*model.OrderRate, error) {
-	return c.getOrderRate(t, p)
+func (c *Client) GetOrderRate(p *model.CurrencyPair, s model.OrderSide) (*model.OrderRate, error) {
+	return c.getOrderRate(s, p)
 }
 
 // GetAccountBalance 残高取得
@@ -26,7 +38,7 @@ func (c *Client) GetAccountBalance() (*model.Balance, error) {
 }
 
 // GetOpenOrders 未決済の注文取得
-func (c *Client) GetOpenOrders() ([]model.Order, error) {
+func (c *Client) GetOpenOrders(pair *model.CurrencyPair) ([]model.Order, error) {
 	orders := []model.Order{}
 
 	oo, err := c.getOpenOrders()
@@ -34,6 +46,9 @@ func (c *Client) GetOpenOrders() ([]model.Order, error) {
 		return nil, err
 	}
 	for _, o := range oo {
+		if pair != nil && o.Pair != pair.String() {
+			continue
+		}
 		orders = append(orders, model.Order{
 			ID:           o.ID,
 			Type:         model.OrderType(o.OrderType),
@@ -80,7 +95,7 @@ func (c *Client) GetContracts() ([]model.Contract, error) {
 			liquidity = model.Taker
 		}
 
-		var side model.ContractSide
+		var side model.OrderSide
 		if t.Side == "buy" {
 			side = model.BuySide
 		} else {
@@ -113,7 +128,7 @@ func (c *Client) PostOrder(o *model.NewOrder) (*model.Order, error) {
 	return &model.Order{
 		ID:           res.ID,
 		Type:         model.OrderType(res.OrderType),
-		Pair:         model.CurrencyPair{},
+		Pair:         o.Pair,
 		Amount:       toFloat32(res.Amount, 0),
 		Rate:         toFloat32Nullable(res.Rate, nil),
 		StopLossRate: toFloat32Nullable(res.StopLossRate, nil),

@@ -53,7 +53,7 @@ const (
 
 const (
 	// BuySide 買い
-	BuySide ContractSide = iota
+	BuySide OrderSide = iota
 	// SellSide 売り
 	SellSide
 )

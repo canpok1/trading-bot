@@ -9,9 +9,14 @@ import (
 )
 
 // getOrderRate レート取得
-func (c *Client) getOrderRate(t model.OrderType, p model.CurrencyPair) (*model.OrderRate, error) {
+func (c *Client) getOrderRate(s model.OrderSide, p *model.CurrencyPair) (*model.OrderRate, error) {
+	t := "sell"
+	if s == model.BuySide {
+		t = "buy"
+	}
+
 	u, err := c.makeURL("/api/exchange/orders/rate", map[string]string{
-		"order_type": string(t),
+		"order_type": t,
 		"pair":       p.String(),
 		"amount":     "1",
 	})
@@ -24,7 +29,7 @@ func (c *Client) getOrderRate(t model.OrderType, p model.CurrencyPair) (*model.O
 		Amount string `json:"amount"`
 		Price  string `json:"price"`
 	}
-	if err := c.request(http.MethodGet, u, "", &res); err != nil {
+	if err := c.requestWithValidation(http.MethodGet, u, "", &res); err != nil {
 		return nil, err
 	}
 
@@ -34,9 +39,34 @@ func (c *Client) getOrderRate(t model.OrderType, p model.CurrencyPair) (*model.O
 	}
 
 	return &model.OrderRate{
-		Pair: p,
+		Pair: *p,
+		Side: s,
 		Rate: float32(rate),
 	}, nil
+}
+
+// getRate レート取得
+func (c *Client) getRate(p *model.CurrencyPair) (float32, error) {
+	u, err := c.makeURL(fmt.Sprintf("/api/rate/%s", p.String()), nil)
+	if err != nil {
+		return 0, err
+	}
+
+	var res struct {
+		Rate string `json:"rate"`
+	}
+	if body, err := c.request(http.MethodGet, u, ""); err != nil {
+		return 0, err
+	} else if err := json.Unmarshal(body, &res); err != nil {
+		return 0, err
+	}
+
+	var rate float64
+	if rate, err = strconv.ParseFloat(res.Rate, 32); err != nil {
+		return 0, fmt.Errorf("failed to parse response of GetRate, p: %v; error: %w", p, err)
+	}
+
+	return float32(rate), nil
 }
 
 // getAccountBalance 残高取得
@@ -52,7 +82,7 @@ func (c *Client) getAccountBalance() (*model.Balance, error) {
 		Jpy     string `json:"jpy"`
 		Btc     string `json:"btc"`
 	}
-	if err := c.request(http.MethodGet, u, "", &res); err != nil {
+	if err := c.requestWithValidation(http.MethodGet, u, "", &res); err != nil {
 		return nil, err
 	}
 
@@ -73,7 +103,7 @@ func (c *Client) getOpenOrders() ([]OpenOrder, error) {
 		Orders []OpenOrder `json:"orders"`
 	}
 
-	if err := c.request(http.MethodGet, u, "", &res); err != nil {
+	if err := c.requestWithValidation(http.MethodGet, u, "", &res); err != nil {
 		return nil, err
 	}
 	return res.Orders, nil
@@ -91,7 +121,7 @@ func (c *Client) getOrderTransactions() ([]OrderTransaction, error) {
 		Transactions []OrderTransaction `json:"transactions"`
 	}
 
-	if err := c.request(http.MethodGet, u, "", &res); err != nil {
+	if err := c.requestWithValidation(http.MethodGet, u, "", &res); err != nil {
 		return nil, err
 	}
 	return res.Transactions, nil
@@ -117,7 +147,7 @@ func (c *Client) postOrder(o *model.NewOrder) (*RegisteredOrder, error) {
 	}
 
 	var res RegisteredOrder
-	if err := c.request(http.MethodPost, u, string(body), &res); err != nil {
+	if err := c.requestWithValidation(http.MethodPost, u, string(body), &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -132,5 +162,5 @@ func (c *Client) deleteOrder(id uint64) error {
 	var res struct {
 		ID uint64 `json:"id"`
 	}
-	return c.request(http.MethodDelete, u, "", &res)
+	return c.requestWithValidation(http.MethodDelete, u, "", &res)
 }

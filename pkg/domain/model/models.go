@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"strings"
 )
 
 // OrderType 注文種別
@@ -16,6 +17,19 @@ type CurrencyPair struct {
 	Settlement CurrencyType
 }
 
+// NewCurrencyPair 生成
+func ParseToCurrencyPair(s string) (*CurrencyPair, error) {
+	splited := strings.Split(s, "_")
+	if len(splited) != 2 {
+		return nil, fmt.Errorf("failed to parse string to CurrencyPair, string: %s", s)
+	}
+
+	return &CurrencyPair{
+		Key:        CurrencyType(splited[0]),
+		Settlement: CurrencyType(splited[1]),
+	}, nil
+}
+
 // String 文字変換
 func (p *CurrencyPair) String() string {
 	return fmt.Sprintf("%s_%s", p.Key, p.Settlement)
@@ -24,9 +38,16 @@ func (p *CurrencyPair) String() string {
 // LiquidityType 流動性種別
 type LiquidityType int
 
+// StoreRate 販売所レート
+type StoreRate struct {
+	Pair CurrencyPair
+	Rate float32
+}
+
 // OrderRate 注文レート
 type OrderRate struct {
 	Pair CurrencyPair
+	Side OrderSide
 	Rate float32
 }
 
@@ -60,8 +81,8 @@ type Order struct {
 	Status       OrderStatus
 }
 
-// ContractSide 約定サイド
-type ContractSide int
+// OrderSide 注文サイド
+type OrderSide int
 
 // Contract 約定
 type Contract struct {
@@ -75,7 +96,7 @@ type Contract struct {
 	FeeCurrency      CurrencyType
 	Fee              float32
 	Liquidity        LiquidityType
-	Side             ContractSide
+	Side             OrderSide
 }
 
 // Position ポジション

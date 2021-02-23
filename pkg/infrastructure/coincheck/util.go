@@ -37,21 +37,25 @@ func (c *Client) makeURL(endpoint string, queries map[string]string) (*url.URL, 
 	return u, nil
 }
 
-func (c *Client) request(method string, u *url.URL, reqBody string, resJSON interface{}) error {
+func (c *Client) request(method string, u *url.URL, reqBody string) ([]byte, error) {
 	nonce := createNonce()
 	signature := computeHmac256(nonce, u.String(), reqBody, c.APISecretKey)
 
 	req, err := c.createRequest(method, u.String(), nonce, signature, reqBody)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
-	body, err := ioutil.ReadAll(res.Body)
+	return ioutil.ReadAll(res.Body)
+}
+
+func (c *Client) requestWithValidation(method string, u *url.URL, reqBody string, resJSON interface{}) error {
+	body, err := c.request(method, u, reqBody)
 	if err != nil {
 		return err
 	}
@@ -115,7 +119,8 @@ func toRequestString(v *float32) string {
 	if v == nil {
 		return ""
 	}
-	return fmt.Sprintf("%.3f", *v)
+	// 小数点以下3桁で切り捨て
+	return fmt.Sprintf("%.3f", float32(int(*v*1000))/1000)
 }
 
 func toCurrencyPair(s string) model.CurrencyPair {

@@ -28,46 +28,70 @@ func NewClient(userName, password, dbHost string, dbPort int, dbName string) *Cl
 	}
 }
 
+// AddOrder 注文情報を追加
 func (c *Client) AddOrder(o *model.Order) error {
-	return nil
+	return c.db.Create(NewOrder(o, model.Open)).Error
 }
 
+// GetOpenOrders 未決済の注文を取得
 func (c *Client) GetOpenOrders() ([]model.Order, error) {
-	return nil, nil
+	records := []Order{}
+	if err := c.db.Find(&records, "status = ?", model.Open).Error; err != nil {
+		return nil, err
+	}
+
+	orders := []model.Order{}
+	for _, r := range records {
+		order, err := r.ToDomainModel()
+		if err != nil {
+			return nil, err
+		}
+		orders = append(orders, *order)
+	}
+
+	return orders, nil
 }
 
-func (c *Client) UpdateOrderStatus(s model.OrderStatus) error {
-	return nil
+// UpdateOrderStatus 注文ステータス更新
+func (c *Client) UpdateOrderStatus(orderID uint64, s model.OrderStatus) error {
+	return c.db.Model(Order{}).Where("id = ?", orderID).Updates(Order{Status: int(s)}).Error
 }
 
-func (c *Client) AddContract(co *model.Contract) error {
-	return nil
-}
-
-// UpsertOrders 注文情報の新規登録・更新
-func (c *Client) UpsertOrders(orders []model.Order) error {
-	if len(orders) == 0 {
+// UpsertContracts 約定情報追加
+func (c *Client) UpsertContracts(cons []model.Contract) error {
+	if len(cons) == 0 {
 		return nil
 	}
-
-	records := []Order{}
-	for _, order := range orders {
-		records = append(records, *NewOrder(&order))
+	records := []Contract{}
+	for _, con := range cons {
+		records = append(records, *NewContract(&con))
 	}
-
 	return c.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&records).Error
 }
 
-// UpdateContracts 約定注文情報の更新
-func (c *Client) UpdateContracts(contracts []model.Contract) error {
-	if len(contracts) == 0 {
-		return nil
+// GetContracts 約定情報取得
+func (c *Client) GetContracts(orderID uint64) ([]model.Contract, error) {
+	records := []Contract{}
+	if err := c.db.Where(&Contract{OrderID: orderID}).Find(&records).Error; err != nil {
+		return nil, err
 	}
 
-	ids := []uint64{}
-	for _, contract := range contracts {
-		ids = append(ids, contract.OrderID)
+	contracts := []model.Contract{}
+	for _, r := range records {
+		contracts = append(contracts, model.Contract{
+			ID:               r.ID,
+			OrderID:          r.OrderID,
+			Rate:             r.Rate,
+			IncreaseCurrency: model.CurrencyType(r.IncreaseCurrency),
+			IncreaseAmount:   r.IncreaseAmount,
+			DecreaseCurrency: model.CurrencyType(r.DecreaseCurrency),
+			DecreaseAmount:   r.DecreaseAmount,
+			FeeCurrency:      model.CurrencyType(r.FeeCurrency),
+			Fee:              r.FeeAmount,
+			Liquidity:        model.LiquidityType(r.Liquidity),
+			Side:             model.OrderSide(r.Side),
+		})
 	}
 
-	return c.db.Model(Order{}).Where("id IN ?", ids).Updates(Order{Status: 1}).Error
+	return contracts, nil
 }

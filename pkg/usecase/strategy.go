@@ -6,6 +6,7 @@ import (
 	"trading-bot/pkg/domain/model"
 	repo "trading-bot/pkg/domain/repository"
 	"trading-bot/pkg/usecase/strategy"
+	"trading-bot/pkg/usecase/trade"
 )
 
 // Strategy 戦略
@@ -18,8 +19,8 @@ type Strategy interface {
 type StrategyType string
 
 const (
-	// Sample サンプル戦略
-	Sample StrategyType = "sample"
+	// WatchOnly 定期取得のみ（売買しない）
+	WatchOnly StrategyType = "watch_only"
 	// FollowUptrend 上昇トレンド追従戦略
 	FollowUptrend StrategyType = "follow_uptrend"
 )
@@ -33,12 +34,12 @@ type StrategyParams struct {
 }
 
 // MakeStrategy 戦略を生成
-func MakeStrategy(t StrategyType, p *StrategyParams) Strategy {
+func MakeStrategy(t StrategyType, facade *trade.Facade) Strategy {
 	switch t {
-	case Sample:
-		return strategy.NewSample(p.ExCli, p.Pair)
+	case WatchOnly:
+		return strategy.NewWatchOnlyStrategy(facade)
 	case FollowUptrend:
-		return strategy.NewFollowUptrendStrategy(p.ExCli, p.OrderRepo, p.RateRepo, p.Pair)
+		return strategy.NewFollowUptrendStrategy(facade)
 	default:
 		return nil
 	}

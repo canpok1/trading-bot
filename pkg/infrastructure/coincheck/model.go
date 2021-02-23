@@ -2,6 +2,7 @@ package coincheck
 
 import "time"
 
+// NewOrder 注文（新規）
 type NewOrder struct {
 	Pair            string `json:"pair"`
 	OrderType       string `json:"order_type"`
@@ -11,6 +12,7 @@ type NewOrder struct {
 	StopLossRate    string `json:"stop_loss_rate,omitempty"`
 }
 
+// RegisteredOrder 注文（登録済み）
 type RegisteredOrder struct {
 	ID           uint64    `json:"id"`
 	Rate         string    `json:"rate"`
@@ -21,6 +23,7 @@ type RegisteredOrder struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+// OpenOrder 注文（未決済）
 type OpenOrder struct {
 	ID            uint64    `json:"id"`
 	OrderType     string    `json:"order_type"`
@@ -31,6 +34,7 @@ type OpenOrder struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
+// OrderTransaction 取引履歴
 type OrderTransaction struct {
 	ID          uint64            `json:"id"`
 	OrderID     uint64            `json:"order_id"`

@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"log"
+	"os"
+	"os/signal"
 	"time"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/infrastructure/coincheck"
 	"trading-bot/pkg/infrastructure/memory"
 	"trading-bot/pkg/infrastructure/mysql"
 	"trading-bot/pkg/usecase"
+	"trading-bot/pkg/usecase/trade"
 
 	"github.com/kelseyhightower/envconfig"
 	"golang.org/x/sync/errgroup"
@@ -50,28 +53,24 @@ func main() {
 	exCli := &coincheck.Client{APIAccessKey: conf.Exchange.AccessKey, APISecretKey: conf.Exchange.SecretKey}
 	rateRepo := memory.NewRateRepository(conf.RateHistorySize)
 	orderRepo := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
+	contractRepo := orderRepo
 
-	watcher := usecase.NewRateWatcher(rateRepo, exCli, orderRepo)
 	strategy := usecase.MakeStrategy(
 		usecase.StrategyType(conf.StrategyName),
-		&usecase.StrategyParams{
-			ExCli:     exCli,
-			OrderRepo: orderRepo,
-			RateRepo:  rateRepo,
-			Pair: &model.CurrencyPair{
+		trade.NewFacade(
+			&model.CurrencyPair{
 				Key:        model.CurrencyType(conf.TargetCurrency),
 				Settlement: model.JPY,
 			},
-		},
+			exCli,
+			rateRepo,
+			orderRepo,
+			contractRepo,
+		),
 	)
 
 	if strategy == nil {
 		log.Fatalf("strategy name is unknown; name = %s", conf.StrategyName)
-	}
-
-	pair := model.CurrencyPair{
-		Key:        model.CurrencyType(conf.TargetCurrency),
-		Settlement: model.JPY,
 	}
 
 	log.Printf("strategy: %s\n", conf.StrategyName)
@@ -80,25 +79,21 @@ func main() {
 	log.Printf("target: %s\n", conf.TargetCurrency)
 	log.Println("======================================")
 
-	errGroup, ctx := errgroup.WithContext(context.Background())
+	rootCtx, cancel := context.WithCancel(context.Background())
+	errGroup, ctx := errgroup.WithContext(rootCtx)
 	errGroup.Go(func() error {
-		ticker := time.NewTicker(time.Duration(conf.WatchIntervalSeconds) * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if err := watcher.Watch(&pair); err != nil {
-					return err
-				}
-			case <-ctx.Done():
-				return nil
-			}
+		quit := make(chan os.Signal)
+		defer close(quit)
+		signal.Notify(quit, os.Interrupt)
+		select {
+		case <-quit:
+			log.Println("terminating ...")
+			cancel()
+		case <-ctx.Done():
 		}
+		return nil
 	})
 	errGroup.Go(func() error {
-		log.Printf("warming up (%d sec) ...\n", conf.WarmupTimeSeconds)
-		time.Sleep(time.Duration(conf.WarmupTimeSeconds) * time.Second)
-
 		ticker := time.NewTicker(time.Duration(conf.TradeIntervalSeconds) * time.Second)
 		defer ticker.Stop()
 		for {

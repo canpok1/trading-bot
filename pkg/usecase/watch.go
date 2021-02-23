@@ -24,9 +24,21 @@ func NewRateWatcher(repo repo.RateRepository, exCli ex.Client, orderCli repo.Ord
 
 // Watch 監視
 func (w *RateWatcher) Watch(p *model.CurrencyPair) error {
-	rate, err := w.exClient.GetOrderRate(model.Buy, *p)
+	buyRate, err := w.exClient.GetOrderRate(p, model.BuySide)
 	if err != nil {
 		return err
 	}
-	return w.rateRepo.AddRate(rate)
+	if err := w.rateRepo.AddOrderRate(buyRate); err != nil {
+		return err
+	}
+
+	sellRate, err := w.exClient.GetOrderRate(p, model.SellSide)
+	if err != nil {
+		return err
+	}
+	if err := w.rateRepo.AddOrderRate(sellRate); err != nil {
+		return err
+	}
+
+	return nil
 }
