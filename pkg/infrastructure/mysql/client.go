@@ -54,7 +54,7 @@ func (c *Client) GetOpenOrders() ([]model.Order, error) {
 
 // UpdateOrderStatus 注文ステータス更新
 func (c *Client) UpdateOrderStatus(orderID uint64, s model.OrderStatus) error {
-	return c.db.Model(Order{}).Where("id = ?", orderID).Updates(Order{Status: int(s)}).Error
+	return c.db.Model(Order{}).Where("id = ?", orderID).Update("status", int(s)).Error
 }
 
 // UpsertContracts 約定情報追加

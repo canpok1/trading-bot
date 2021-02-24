@@ -119,8 +119,15 @@ func toRequestString(v *float32) string {
 	if v == nil {
 		return ""
 	}
-	// 小数点以下3桁で切り捨て
-	return fmt.Sprintf("%.3f", float32(int(*v*1000))/1000)
+
+	integerStr := fmt.Sprintf("%d", int(*v))
+	if len(integerStr) >= 5 {
+		return integerStr
+	}
+
+	// 小数含めて全体で5桁にする
+	s := fmt.Sprintf("%.5f", *v)
+	return fmt.Sprintf("%s", s[:6])
 }
 
 func toCurrencyPair(s string) model.CurrencyPair {
