@@ -28,9 +28,19 @@ func NewClient(userName, password, dbHost string, dbPort int, dbName string) *Cl
 	}
 }
 
-// AddOrder 注文情報を追加
-func (c *Client) AddOrder(o *model.Order) error {
-	return c.db.Create(NewOrder(o, model.Open)).Error
+// GetOrder 注文を取得
+func (c *Client) GetOrder(orderID uint64) (*model.Order, error) {
+	var record Order
+	if err := c.db.First(&record, orderID).Error; err != nil {
+		return nil, err
+	}
+
+	order, err := record.ToDomainModel()
+	if err != nil {
+		return nil, err
+	}
+
+	return order, nil
 }
 
 // GetOpenOrders 未決済の注文を取得
@@ -52,21 +62,49 @@ func (c *Client) GetOpenOrders() ([]model.Order, error) {
 	return orders, nil
 }
 
-// UpdateOrderStatus 注文ステータス更新
-func (c *Client) UpdateOrderStatus(orderID uint64, s model.OrderStatus) error {
-	return c.db.Model(Order{}).Where("id = ?", orderID).Update("status", int(s)).Error
+func (c *Client) getPosition(id uint64) (*model.Position, error) {
+	var p Position
+	if err := c.db.First(&p, id).Error; err != nil {
+		return nil, err
+	}
+	position := model.Position{ID: id}
+
+	var oRecord Order
+	if err := c.db.First(&oRecord, p.OpenerOrderID).Error; err != nil {
+		return nil, err
+	}
+	oOrder, err := oRecord.ToDomainModel()
+	if err != nil {
+		return nil, err
+	}
+	position.OpenerOrder = oOrder
+
+	if p.CloserOrderID != nil {
+		var cRecord Order
+		if err := c.db.First(&cRecord, p.CloserOrderID).Error; err != nil {
+			return nil, err
+		}
+		cOrder, err := cRecord.ToDomainModel()
+		if err != nil {
+			return nil, err
+		}
+		position.CloserOrder = cOrder
+	}
+
+	return &position, nil
 }
 
-// UpsertContracts 約定情報追加
-func (c *Client) UpsertContracts(cons []model.Contract) error {
-	if len(cons) == 0 {
-		return nil
+// UpdateCloserOrderID クローズ注文を更新
+func (c *Client) UpdateCloserOrderID(id, closerOrderID uint64) (*model.Position, error) {
+	if err := c.db.Model(Position{}).Where("id = ?", id).Update("closer_order_id", closerOrderID).Error; err != nil {
+		return nil, err
 	}
-	records := []Contract{}
-	for _, con := range cons {
-		records = append(records, *NewContract(&con))
-	}
-	return c.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&records).Error
+	return c.getPosition(id)
+}
+
+// UpdateStatus 注文ステータス更新
+func (c *Client) UpdateStatus(orderID uint64, s model.OrderStatus) error {
+	return c.db.Model(Order{}).Where("id = ?", orderID).Update("status", int(s)).Error
 }
 
 // GetContracts 約定情報取得
@@ -94,4 +132,139 @@ func (c *Client) GetContracts(orderID uint64) ([]model.Contract, error) {
 	}
 
 	return contracts, nil
+}
+
+// UpsertContracts 約定情報追加
+func (c *Client) UpsertContracts(cons []model.Contract) error {
+	if len(cons) == 0 {
+		return nil
+	}
+	records := []Contract{}
+	for _, con := range cons {
+		records = append(records, *NewContract(&con))
+	}
+	return c.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&records).Error
+}
+
+// AddNewOrder 注文情報を追加
+func (c *Client) AddNewOrder(o *model.Order) (*model.Position, error) {
+	oRecord := NewOrder(o, model.Open)
+	err := c.db.Create(oRecord).Error
+	if err != nil {
+		return nil, err
+	}
+	newOrder, err := oRecord.ToDomainModel()
+	if err != nil {
+		return nil, err
+	}
+
+	pRecord := Position{
+		OpenerOrderID: oRecord.ID,
+		CloserOrderID: nil,
+	}
+	err = c.db.Create(&pRecord).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.Position{
+		ID:          pRecord.ID,
+		OpenerOrder: newOrder,
+		CloserOrder: nil,
+	}, nil
+}
+
+// AddSettleOrder 注文情報を追加
+func (c *Client) AddSettleOrder(positionID uint64, o *model.Order) (*model.Position, error) {
+	oRecord := NewOrder(o, model.Open)
+	err := c.db.Create(oRecord).Error
+	if err != nil {
+		return nil, err
+	}
+	settleOrder, err := oRecord.ToDomainModel()
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.db.Model(&Position{}).Where("id = ?", positionID).Update("closer_order_id", oRecord.ID).Error
+	if err != nil {
+		return nil, err
+	}
+
+	var pRecord Position
+	if err := c.db.First(&pRecord, positionID).Error; err != nil {
+		return nil, err
+	}
+
+	var nRecord Order
+	if err := c.db.First(&nRecord, pRecord.OpenerOrderID).Error; err != nil {
+		return nil, err
+	}
+	newOrder, err := nRecord.ToDomainModel()
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.Position{
+		ID:          pRecord.ID,
+		OpenerOrder: newOrder,
+		CloserOrder: settleOrder,
+	}, nil
+}
+
+// CancelSettleOrder 決済注文をキャンセル
+func (c *Client) CancelSettleOrder(positionID uint64) (*model.Position, error) {
+	var pos Position
+	if err := c.db.First(&pos, positionID).Error; err != nil {
+		return nil, err
+	}
+
+	if err := c.db.Model(&Order{}).Where("id = ?", pos.OpenerOrderID).Update("status", 2).Error; err != nil {
+		return nil, err
+	}
+
+	if err := c.db.Model(&Position{}).Where("id = ?", pos.ID).Update("closer_order_id", nil).Error; err != nil {
+		return nil, err
+	}
+
+	var o Order
+	if err := c.db.First(&o, pos.OpenerOrderID).Error; err != nil {
+		return nil, err
+	}
+	order, err := o.ToDomainModel()
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.Position{
+		ID:          pos.ID,
+		OpenerOrder: order,
+		CloserOrder: nil,
+	}, nil
+}
+
+// GetOpenPositions ポジションを取得
+func (c *Client) GetOpenPositions() ([]model.Position, error) {
+	var records []struct {
+		ID uint64
+	}
+	err := c.db.Table("positions").
+		Select("positions.id").
+		Joins("LEFT JOIN orders ON positions.closer_order_id = orders.id").
+		Where("positions.closer_order_id IS NULL OR orders.status = 0").
+		Scan(&records).Error
+	if err != nil {
+		return nil, err
+	}
+
+	pp := []model.Position{}
+	for _, r := range records {
+		p, err := c.getPosition(r.ID)
+		if err != nil {
+			return nil, err
+		}
+		pp = append(pp, *p)
+	}
+
+	return pp, nil
 }

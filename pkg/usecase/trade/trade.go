@@ -13,16 +13,25 @@ type Facade struct {
 	rateRepo     repository.RateRepository
 	orderRepo    repository.OrderRepository
 	contractRepo repository.ContractRepository
+	positionRepo repository.PositionRepository
 }
 
 // NewFacade 生成
-func NewFacade(p *model.CurrencyPair, exCli exchange.Client, rateRepo repository.RateRepository, orderRepo repository.OrderRepository, contractRepo repository.ContractRepository) *Facade {
+func NewFacade(
+	p *model.CurrencyPair,
+	exCli exchange.Client,
+	rateRepo repository.RateRepository,
+	orderRepo repository.OrderRepository,
+	contractRepo repository.ContractRepository,
+	positionRepo repository.PositionRepository,
+) *Facade {
 	return &Facade{
 		pair:         p,
 		exClient:     exCli,
 		rateRepo:     rateRepo,
 		orderRepo:    orderRepo,
 		contractRepo: contractRepo,
+		positionRepo: positionRepo,
 	}
 }
 
@@ -120,7 +129,7 @@ func (f *Facade) FetchOrders() error {
 		if opened {
 			continue
 		}
-		if err := f.orderRepo.UpdateOrderStatus(o.ID, model.Closed); err != nil {
+		if err := f.orderRepo.UpdateStatus(o.ID, model.Closed); err != nil {
 			return err
 		}
 	}
@@ -167,9 +176,9 @@ func (f *Facade) GetSellRateHistory() []float32 {
 	return f.rateRepo.GetRateHistory(&f.pair.Key, model.SellSide)
 }
 
-// GetOpenOrders 未決済の注文を取得
-func (f *Facade) GetOpenOrders() ([]model.Order, error) {
-	return f.orderRepo.GetOpenOrders()
+// GetOpenPositions オープン状態のポジションを取得
+func (f *Facade) GetOpenPositions() ([]model.Position, error) {
+	return f.positionRepo.GetOpenPositions()
 }
 
 // GetContracts 約定情報を取得
@@ -177,31 +186,50 @@ func (f *Facade) GetContracts(orderID uint64) ([]model.Contract, error) {
 	return f.contractRepo.GetContracts(orderID)
 }
 
-// PostOrder 注文
-func (f *Facade) PostOrder(o *model.NewOrder) (*model.Order, error) {
+// GetOrder 注文情報を取得
+func (f *Facade) GetOrder(orderID uint64) (*model.Order, error) {
+	return f.orderRepo.GetOrder(orderID)
+}
+
+// SendMarketBuyOrder 成行買い注文
+func (f *Facade) SendMarketBuyOrder(amount float32, p *model.Position) (*model.Position, error) {
+	return f.postOrder(&model.NewOrder{
+		Type:            model.MarketBuy,
+		Pair:            *f.GetCurrencyPair(),
+		MarketBuyAmount: &amount,
+	}, p)
+}
+
+// SendSellOrder 売り注文
+func (f *Facade) SendSellOrder(amount float32, rate float32, p *model.Position) (*model.Position, error) {
+	return f.postOrder(&model.NewOrder{
+		Type:   model.Sell,
+		Pair:   *f.GetCurrencyPair(),
+		Amount: &amount,
+		Rate:   &rate,
+	}, p)
+}
+
+// postOrder 注文
+func (f *Facade) postOrder(o *model.NewOrder, p *model.Position) (*model.Position, error) {
 	order, err := f.exClient.PostOrder(o)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := f.orderRepo.AddOrder(order); err != nil {
+	if p == nil {
+		return f.positionRepo.AddNewOrder(order)
+	}
+	return f.positionRepo.AddSettleOrder(p.ID, order)
+}
+
+// CancelSettleOrder 注文キャンセル
+func (f *Facade) CancelSettleOrder(orderID uint64) (*model.Position, error) {
+	if err := f.exClient.DeleteOrder(orderID); err != nil {
 		return nil, err
 	}
 
-	return order, nil
-}
-
-// CancelOrder 注文キャンセル
-func (f *Facade) CancelOrder(orderID uint64) error {
-	if err := f.exClient.DeleteOrder(orderID); err != nil {
-		return err
-	}
-
-	if err := f.orderRepo.UpdateOrderStatus(orderID, model.Canceled); err != nil {
-		return err
-	}
-
-	return nil
+	return f.positionRepo.CancelSettleOrder(orderID)
 }
 
 // GetRateHistorySizeMax レート履歴の最大容量を取得

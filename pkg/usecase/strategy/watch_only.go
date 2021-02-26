@@ -27,23 +27,32 @@ func (s *WatchOnlyStrategy) Trade(ctx context.Context) error {
 	log.Printf("buy rate: %v\n", s.facade.GetBuyRateHistory())
 	log.Printf("sell rate: %v\n", s.facade.GetSellRateHistory())
 
-	oo, err := s.facade.GetOpenOrders()
+	pp, err := s.facade.GetOpenPositions()
 	if err != nil {
 		return err
 	}
-	log.Printf("open order count: %d\n", len(oo))
-	for _, o := range oo {
-		log.Printf("open order id: %d\n", o.ID)
-	}
-
-	for _, o := range oo {
-		cc, err := s.facade.GetContracts(o.ID)
-		if err != nil {
-			return err
+	log.Printf("open position count: %d\n", len(pp))
+	for _, p := range pp {
+		log.Printf("open position id: %d\n", p.ID)
+		{
+			cc, err := s.facade.GetContracts(p.OpenerOrder.ID)
+			if err != nil {
+				return err
+			}
+			log.Printf("open order id: %d, contract count: %d\n", p.OpenerOrder.ID, len(cc))
+			for _, c := range cc {
+				log.Printf("contract: %#v\n", c)
+			}
 		}
-		log.Printf("contract count: %d\n", len(cc))
-		for _, c := range cc {
-			log.Printf("contract: %#v\n", c)
+		{
+			cc, err := s.facade.GetContracts(p.CloserOrder.ID)
+			if err != nil {
+				return err
+			}
+			log.Printf("close order id: %d, contract count: %d\n", p.CloserOrder.ID, len(cc))
+			for _, c := range cc {
+				log.Printf("contract: %#v\n", c)
+			}
 		}
 	}
 

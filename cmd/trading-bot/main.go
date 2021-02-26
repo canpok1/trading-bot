@@ -54,6 +54,7 @@ func main() {
 	rateRepo := memory.NewRateRepository(conf.RateHistorySize)
 	orderRepo := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
 	contractRepo := orderRepo
+	positionRepo := orderRepo
 
 	strategy := usecase.MakeStrategy(
 		usecase.StrategyType(conf.StrategyName),
@@ -66,6 +67,7 @@ func main() {
 			rateRepo,
 			orderRepo,
 			contractRepo,
+			positionRepo,
 		),
 	)
 
@@ -100,7 +102,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				if err := strategy.Trade(ctx); err != nil {
-					return err
+					log.Printf("error occured, %v", err)
 				}
 			case <-ctx.Done():
 				return nil

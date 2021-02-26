@@ -99,3 +99,10 @@ func NewContract(org *model.Contract) *Contract {
 		Liquidity:        int(org.Liquidity),
 	}
 }
+
+// Position ポジション
+type Position struct {
+	ID            uint64
+	OpenerOrderID uint64
+	CloserOrderID *uint64
+}

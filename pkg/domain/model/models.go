@@ -81,6 +81,30 @@ type Order struct {
 	Status       OrderStatus
 }
 
+// String 文字列
+func (o *Order) String() string {
+	rate := "-"
+	if o.Rate != nil {
+		rate = fmt.Sprintf("%f", *o.Rate)
+	}
+
+	stopLossRate := "-"
+	if o.StopLossRate != nil {
+		stopLossRate = fmt.Sprintf("%f", *o.StopLossRate)
+	}
+
+	status := "-"
+	switch o.Status {
+	case 0:
+		status = "open"
+	case 1:
+		status = "closed"
+	case 2:
+		status = "canceled"
+	}
+	return fmt.Sprintf("order[id:%d %s %s amout:%f rate:%s stop_loss_rate:%s status:%s]", o.ID, o.Type, o.Pair.String(), o.Amount, rate, stopLossRate, status)
+}
+
 // OrderSide 注文サイド
 type OrderSide int
 
@@ -99,8 +123,39 @@ type Contract struct {
 	Side             OrderSide
 }
 
+func (c *Contract) String() string {
+	liquidity := "-"
+	switch c.Liquidity {
+	case 0:
+		liquidity = "Taker"
+	case 1:
+		liquidity = "Maker"
+	}
+
+	side := "-"
+	switch c.Side {
+	case 0:
+		side = "buy"
+	case 1:
+		side = "sell"
+	}
+	return fmt.Sprintf("contract[id:%d order_id:%d rate: %f %s:%f %s:%f fee:%f %s %s]",
+		c.ID,
+		c.OrderID,
+		c.Rate,
+		c.IncreaseCurrency,
+		c.IncreaseAmount,
+		c.DecreaseCurrency,
+		c.DecreaseAmount,
+		c.Fee,
+		liquidity,
+		side,
+	)
+}
+
 // Position ポジション
 type Position struct {
+	ID          uint64
 	OpenerOrder *Order
 	CloserOrder *Order
 }
