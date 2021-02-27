@@ -268,3 +268,23 @@ func (c *Client) GetOpenPositions() ([]model.Position, error) {
 
 	return pp, nil
 }
+
+// TruncateAll 全テーブルから全レコードを削除
+func (c *Client) TruncateAll() error {
+	if err := c.db.Exec("DELETE FROM profits;").Error; err != nil {
+		return err
+	}
+	if err := c.db.Exec("DELETE FROM positions;").Error; err != nil {
+		return err
+	}
+	if err := c.db.Exec("DELETE FROM contracts;").Error; err != nil {
+		return err
+	}
+	if err := c.db.Exec("DELETE FROM orders;").Error; err != nil {
+		return err
+	}
+	if err := c.db.Exec("INSERT INTO profits (amount) VALUES (0);").Error; err != nil {
+		return err
+	}
+	return nil
+}

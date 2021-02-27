@@ -1,0 +1,20 @@
+# 上昇トレンド追従
+strategy_name = "follow_uptrend"
+
+trade_interval_seconds = 60
+rate_history_size = 6
+target_currency = "mona"
+warmup_time_seconds = 60
+
+# 取引所
+[exchange]
+access_key = "xxxxx"
+secret_key = "xxxxx"
+
+# DB設定
+[db]
+host = "db"
+port = 3306
+name = "trading-bot"
+user_name = "bot"
+password = "P@ssw0rd"

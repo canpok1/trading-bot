@@ -1,0 +1,12 @@
+# シミュレーター
+strategy_name = "follow_uptrend"
+target_currency = "mona"
+rate_history_size = 6
+
+# DB設定
+[db]
+host = "simulation-db"
+port = 3306
+name = "trading-bot"
+user_name = "bot"
+password = "P@ssw0rd"

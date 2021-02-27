@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -13,39 +14,20 @@ import (
 	"trading-bot/pkg/usecase"
 	"trading-bot/pkg/usecase/trade"
 
-	"github.com/kelseyhightower/envconfig"
+	"github.com/BurntSushi/toml"
 	"golang.org/x/sync/errgroup"
 )
 
-type Config struct {
-	StrategyName         string `split_words:"true" required:"true"`
-	TradeIntervalSeconds int    `split_words:"true" required:"true"`
-	RateHistorySize      int    `split_words:"true" required:"true"`
-	TargetCurrency       string `split_words:"true" required:"true"`
-	WarmupTimeSeconds    int    `split_words:"true" required:"true"`
-	Exchange             Exchange
-	DB                   DB
-}
-
-type Exchange struct {
-	AccessKey string `split_words:"true" required:"true"`
-	SecretKey string `split_words:"true" required:"true"`
-}
-
-type DB struct {
-	Host     string `required:"true"`
-	Port     int    `required:"true"`
-	Name     string `required:"true"`
-	UserName string `split_words:"true" required:"true"`
-	Password string `required:"true"`
-}
-
 func main() {
 	log.Println("===== START PROGRAM ====================")
-	defer log.Println("===== END PROGRAM ====================")
+	defer log.Println("===== END PROGRAM ======================")
 
-	var conf Config
-	if err := envconfig.Process("BOT", &conf); err != nil {
+	f := flag.String("f", "", "config file path")
+	flag.Parse()
+	log.Printf("config file: %s\n", *f)
+
+	var conf model.Config
+	if _, err := toml.DecodeFile(*f, &conf); err != nil {
 		log.Fatal(err.Error())
 	}
 
