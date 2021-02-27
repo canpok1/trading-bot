@@ -200,6 +200,15 @@ func (f *Facade) SendMarketBuyOrder(amount float32, p *model.Position) (*model.P
 	}, p)
 }
 
+// SendMarketSellOrder 成行売り注文
+func (f *Facade) SendMarketSellOrder(amount float32, p *model.Position) (*model.Position, error) {
+	return f.postOrder(&model.NewOrder{
+		Type:            model.MarketSell,
+		Pair:            *f.GetCurrencyPair(),
+		MarketBuyAmount: &amount,
+	}, p)
+}
+
 // SendSellOrder 売り注文
 func (f *Facade) SendSellOrder(amount float32, rate float32, p *model.Position) (*model.Position, error) {
 	return f.postOrder(&model.NewOrder{

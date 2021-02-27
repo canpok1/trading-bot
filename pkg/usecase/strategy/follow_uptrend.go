@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 	"trading-bot/pkg/domain/model"
@@ -60,12 +61,14 @@ func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("open poss [count: %d]", len(pp))
 
 	if len(pp) < positionCountMax {
+		log.Printf("[check] open poss [count: %d] < %d => check new order", len(pp), positionCountMax)
 		if err := f.checkNewOrder(); err != nil {
 			return err
 		}
+	} else {
+		log.Printf("[check] open poss [count: %d] >= %d => skip new order", len(pp), positionCountMax)
 	}
 
 	for _, p := range pp {
@@ -79,71 +82,85 @@ func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
 
 func (f *FollowUptrendStrategy) checkNewOrder() error {
 	if !f.isUptrend() {
-		log.Printf("current trend is not UP => skip")
+		log.Printf("[check] current trend is not UP => skip new order")
 		return nil
 	}
-	log.Printf("current trend is UP => start trade")
 
-	log.Printf("sending buy order ...")
-	pos1, err := f.sendBuyOrder()
+	log.Printf("[trade] sending buy order ...")
+	pos1, err := f.facade.SendMarketBuyOrder(fundJpy, nil)
 	if err != nil {
 		return err
 	}
-	log.Printf("completed to send buy order [%v]", pos1.OpenerOrder)
+	log.Printf("[trade] completed to send buy order [%v]", pos1.OpenerOrder)
 
 	if _, err := f.waitContract(pos1.OpenerOrder.ID); err != nil {
 		return err
 	}
 
-	log.Printf("sending sell order ...")
+	log.Printf("[trade] sending sell order ...")
+	//pos2, err := f.sendSellOrder(pos1)
 	pos2, err := f.sendSellOrder(pos1)
 	if err != nil {
 		return err
 	}
-	log.Printf("completed to send sell order [%v]", *pos2.CloserOrder)
+	log.Printf("[trade] completed to send sell order [%v]", *pos2.CloserOrder)
 
 	return nil
 }
 
 func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 	if pos.OpenerOrder.Status == model.Open {
-		log.Printf("%v => wait for contract new order...", pos)
+		log.Printf("[check] position[id:%d]: OpenerOrder is OPEN => wait for contract new order[%s rate:%s amount:%.5f] ...",
+			pos.ID,
+			pos.OpenerOrder.Type,
+			toDisplayStr(pos.OpenerOrder.Rate, "--"),
+			pos.OpenerOrder.Amount)
 		return nil
 	}
 	if pos.CloserOrder == nil {
-		log.Printf("%v => sending sell order ...", pos)
+		log.Printf("[check] position[id:%d]: Closer Order is nothing => sending sell order ...", pos.ID)
 		pos2, err := f.sendSellOrder(pos)
 		if err != nil {
 			return err
 		}
-		log.Printf("completed to send sell order [%v]", *pos2.CloserOrder)
+		log.Printf("[trade] completed to send order [%s rate:%s amount:%.5f]",
+			pos2.CloserOrder.Type,
+			toDisplayStr(pos2.CloserOrder.Rate, "--"),
+			pos2.CloserOrder.Amount,
+		)
 		return nil
 	}
 
 	if pos.CloserOrder.Status == model.Open {
-		shouldReorder, err := f.shouldReorder(pos.CloserOrder)
+		log.Printf("[check] position[id:%d]: Closer Order is OPEN => check for resend order[%s rate:%s amount:%.5f] ...",
+			pos.ID,
+			pos.CloserOrder.Type,
+			toDisplayStr(pos.CloserOrder.Rate, "--"),
+			pos.CloserOrder.Amount,
+		)
+
+		shouldLossCut, err := f.shouldLossCut(pos.CloserOrder)
 		if err != nil {
 			return err
 		}
 
-		if shouldReorder {
-			log.Printf("%v => sending re order ...", pos)
-
-			log.Printf("sending cancel order ...")
+		if shouldLossCut {
+			log.Printf("[trade] sending cancel order ...")
 			pos2, err := f.facade.CancelSettleOrder(pos.CloserOrder.ID)
 			if err != nil {
 				return err
 			}
-			log.Printf("completed to send cancel order [order_id:%d]", pos2.CloserOrder.ID)
+			log.Printf("[trade] completed to send cancel order[order_id:%d]", pos2.CloserOrder.ID)
 
-			log.Printf("sending sell order ...")
-			pos3, err := f.sendSellOrder(pos)
+			log.Printf("[trade] sending loss cut sell order ...")
+			pos3, err := f.sendLossCutSellOrder(pos)
 			if err != nil {
 				return err
 			}
-			log.Printf("completed to send sell order [%v]", *pos3)
-		} else {
-			log.Printf("%v => wait for contract ...", pos)
+			log.Printf("[trade] completed to send loss cut sell order[%s rate:%s amount:%.5f]",
+				pos3.CloserOrder.Type,
+				toDisplayStr(pos.CloserOrder.Rate, "--"),
+				pos.CloserOrder.Amount)
 		}
 	}
 
@@ -178,17 +195,20 @@ func (f *FollowUptrendStrategy) isUptrend() bool {
 		}
 	}
 
-	log.Printf("check rise count: %d / %d", count, size-1)
-
-	return count > ((size - 1) / 2)
+	if count > ((size - 1) / 2) {
+		log.Printf("[check] rise count: %d / %d => UP trend", count, size-1)
+		return true
+	}
+	log.Printf("[check] rise count: %d / %d => not UP trend", count, size-1)
+	return false
 }
 
-func (f *FollowUptrendStrategy) sendBuyOrder() (*model.Position, error) {
-	return f.facade.SendMarketBuyOrder(fundJpy, nil)
-}
+// func (f *FollowUptrendStrategy) sendBuyOrder() (*model.Position, error) {
+// 	return f.facade.SendMarketBuyOrder(fundJpy, nil)
+// }
 
 func (f *FollowUptrendStrategy) waitContract(orderID uint64) ([]model.Contract, error) {
-	log.Printf("waiting for contract ...")
+	log.Printf("[trade] waiting for contract ...")
 	for {
 		if err := f.facade.FetchAll(); err != nil {
 			return nil, err
@@ -202,7 +222,7 @@ func (f *FollowUptrendStrategy) waitContract(orderID uint64) ([]model.Contract, 
 			break
 		}
 
-		log.Printf("not contracted, waiting for contract ...")
+		log.Printf("[trade] not contracted, waiting for contract ...")
 		time.Sleep(contractCheckInterval)
 	}
 	contracts, err := f.facade.GetContracts(orderID)
@@ -210,7 +230,7 @@ func (f *FollowUptrendStrategy) waitContract(orderID uint64) ([]model.Contract, 
 		return nil, err
 	}
 
-	log.Printf("contracted!!! [%v]", contracts)
+	log.Printf("[trade] contracted!!! [%v]", contracts)
 	return contracts, nil
 }
 
@@ -230,8 +250,8 @@ func (f *FollowUptrendStrategy) sendSellOrder(p *model.Position) (*model.Positio
 	return f.facade.SendSellOrder(amount, rate*(1.0+upRate), p)
 }
 
-func (f *FollowUptrendStrategy) shouldReorder(sellOrder *model.Order) (bool, error) {
-	// 指値までの差が現在レートから離れすぎてたら再注文
+func (f *FollowUptrendStrategy) shouldLossCut(sellOrder *model.Order) (bool, error) {
+	// 指値までの差が現在レートから離れすぎてたら損切り
 	currentRate, err := f.facade.GetSellRate()
 	if err != nil {
 		return false, err
@@ -240,9 +260,29 @@ func (f *FollowUptrendStrategy) shouldReorder(sellOrder *model.Order) (bool, err
 	pair := f.facade.GetCurrencyPair().String()
 	diff := (*sellOrder.Rate - currentRate) / currentRate
 	if diff > cancelBorderPer {
-		log.Printf("%s rate: [current: %.3f, order: %.3f], diff: %.3f > border: %.3f => should reorder\n", pair, currentRate, *sellOrder.Rate, diff, cancelBorderPer)
+		log.Printf("[check] order[rate:%.3f] %s[%.3f] diff: %.3f > border: %.3f => should loss cut\n", *sellOrder.Rate, pair, currentRate, diff, cancelBorderPer)
 		return true, nil
 	}
-	log.Printf("%s rate: [current: %.3f, order: %.3f], diff: %.3f =< border: %.3f => should not reorder\n", pair, currentRate, *sellOrder.Rate, diff, cancelBorderPer)
+	log.Printf("[check] order[rate:%.3f] %s[%.3f] diff: %.3f > border: %.3f => skip loss cut\n", *sellOrder.Rate, pair, currentRate, diff, cancelBorderPer)
 	return false, nil
+}
+
+func (f *FollowUptrendStrategy) sendLossCutSellOrder(p *model.Position) (*model.Position, error) {
+	contracts, err := f.facade.GetContracts(p.OpenerOrder.ID)
+	if err != nil {
+		return nil, err
+	}
+	var amount float32
+	for _, c := range contracts {
+		amount += c.IncreaseAmount
+	}
+
+	return f.facade.SendMarketSellOrder(amount, p)
+}
+
+func toDisplayStr(v *float32, def string) string {
+	if v == nil {
+		return def
+	}
+	return fmt.Sprintf("%.3f", *v)
 }

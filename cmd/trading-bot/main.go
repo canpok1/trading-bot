@@ -20,7 +20,6 @@ import (
 type Config struct {
 	StrategyName         string `split_words:"true" required:"true"`
 	TradeIntervalSeconds int    `split_words:"true" required:"true"`
-	WatchIntervalSeconds int    `split_words:"true" required:"true"`
 	RateHistorySize      int    `split_words:"true" required:"true"`
 	TargetCurrency       string `split_words:"true" required:"true"`
 	WarmupTimeSeconds    int    `split_words:"true" required:"true"`
@@ -77,7 +76,6 @@ func main() {
 
 	log.Printf("strategy: %s\n", conf.StrategyName)
 	log.Printf("trade interval: %dsec\n", conf.TradeIntervalSeconds)
-	log.Printf("watch interval: %dsec\n", conf.WatchIntervalSeconds)
 	log.Printf("target: %s\n", conf.TargetCurrency)
 	log.Println("======================================")
 
