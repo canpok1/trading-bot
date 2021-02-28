@@ -1,7 +1,8 @@
 # シミュレーター
 strategy_name = "follow_uptrend"
-target_currency = "mona"
-rate_history_size = 6
+target_currency = "btc"
+rate_history_size = 15
+slippage = 0.001
 
 # DB設定
 [db]

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/infrastructure/memory"
 	"trading-bot/pkg/infrastructure/mysql"
@@ -26,7 +27,19 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	exCli := memory.NewExchangeMock()
+	historical, err := os.Open("data/simulator/historical_btc_jpy.csv")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	pair := model.CurrencyPair{
+		Key:        model.CurrencyType(conf.TargetCurrency),
+		Settlement: model.JPY,
+	}
+	exCli, err := memory.NewExchangeMock(&pair, historical, conf.Slippage)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
 	rateRepo := memory.NewRateRepository(conf.RateHistorySize)
 	mysqlCli := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
 
@@ -61,14 +74,12 @@ func main() {
 	ctx := context.Background()
 	for {
 		if err := strategy.Trade(ctx); err != nil {
-			log.Printf("error occured, %v", err)
+			log.Fatalf("error occured, %v\n", err)
 			break
 		}
 
-		if !exCli.HasNextStep() {
+		if !exCli.NextStep() {
 			break
 		}
-
-		exCli.NextStep()
 	}
 }

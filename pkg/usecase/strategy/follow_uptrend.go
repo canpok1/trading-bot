@@ -15,12 +15,12 @@ const (
 
 	// 売り注文時のレート上乗せ分(%)
 	// 売り注文レート = 買い注文のレート × (1 + upRate)
-	upRate float32 = 0.005
+	upRate float32 = 0.01
 
 	// キャンセルの基準値(%)
 	// 現レートと指値との差分が基準値以上ならキャンセルする
 	// 差分 = (売指レート - 現レート) / 現レート
-	cancelBorderPer float32 = 0.05
+	cancelBorderPer float32 = 0.10
 
 	// 約定チェック間隔
 	contractCheckInterval = 2 * time.Second
@@ -146,14 +146,14 @@ func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 
 		if shouldLossCut {
 			log.Printf("[trade] sending cancel order ...")
-			pos2, err := f.facade.CancelSettleOrder(pos.CloserOrder.ID)
+			pos2, err := f.facade.CancelSettleOrder(pos)
 			if err != nil {
 				return err
 			}
-			log.Printf("[trade] completed to send cancel order[order_id:%d]", pos2.CloserOrder.ID)
+			log.Printf("[trade] completed to send cancel order[order_id:%d]", pos.CloserOrder.ID)
 
 			log.Printf("[trade] sending loss cut sell order ...")
-			pos3, err := f.sendLossCutSellOrder(pos)
+			pos3, err := f.sendLossCutSellOrder(pos2)
 			if err != nil {
 				return err
 			}

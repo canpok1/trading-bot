@@ -28,8 +28,9 @@ type DB struct {
 
 // SimulatorConfig シミュレーター用設定
 type SimulatorConfig struct {
-	StrategyName    string `toml:"strategy_name"`
-	TargetCurrency  string `toml:"target_currency"`
-	RateHistorySize int    `toml:"rate_history_size"`
-	DB              DB     `toml:"db"`
+	StrategyName    string  `toml:"strategy_name"`
+	TargetCurrency  string  `toml:"target_currency"`
+	RateHistorySize int     `toml:"rate_history_size"`
+	Slippage        float32 `toml:"slippage"`
+	DB              DB      `toml:"db"`
 }

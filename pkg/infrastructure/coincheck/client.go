@@ -15,18 +15,6 @@ type Client struct {
 	APISecretKey string
 }
 
-// GetStoreRate 注文レート取得
-func (c *Client) GetStoreRate(p *model.CurrencyPair) (*model.StoreRate, error) {
-	rate, err := c.getRate(p)
-	if err != nil {
-		return nil, err
-	}
-	return &model.StoreRate{
-		Pair: *p,
-		Rate: rate,
-	}, nil
-}
-
 // GetOrderRate 注文レート取得
 func (c *Client) GetOrderRate(p *model.CurrencyPair, s model.OrderSide) (*model.OrderRate, error) {
 	return c.getOrderRate(s, p)

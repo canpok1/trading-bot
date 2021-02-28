@@ -205,7 +205,10 @@ func (f *Facade) SendMarketSellOrder(amount float32, p *model.Position) (*model.
 	return f.postOrder(&model.NewOrder{
 		Type:            model.MarketSell,
 		Pair:            *f.GetCurrencyPair(),
-		MarketBuyAmount: &amount,
+		Amount:          &amount,
+		Rate:            nil,
+		MarketBuyAmount: nil,
+		StopLossRate:    nil,
 	}, p)
 }
 
@@ -233,12 +236,12 @@ func (f *Facade) postOrder(o *model.NewOrder, p *model.Position) (*model.Positio
 }
 
 // CancelSettleOrder 注文キャンセル
-func (f *Facade) CancelSettleOrder(orderID uint64) (*model.Position, error) {
-	if err := f.exClient.DeleteOrder(orderID); err != nil {
+func (f *Facade) CancelSettleOrder(p *model.Position) (*model.Position, error) {
+	if err := f.exClient.DeleteOrder(p.CloserOrder.ID); err != nil {
 		return nil, err
 	}
 
-	return f.positionRepo.CancelSettleOrder(orderID)
+	return f.positionRepo.CancelSettleOrder(p.ID)
 }
 
 // GetRateHistorySizeMax レート履歴の最大容量を取得
