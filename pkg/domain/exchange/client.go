@@ -7,7 +7,7 @@ import (
 // Client 取引所クライアント
 type Client interface {
 	GetOrderRate(*model.CurrencyPair, model.OrderSide) (*model.OrderRate, error)
-	GetAccountBalance() (*model.Balance, error)
+	GetBalance(currency *model.CurrencyType) (*model.Balance, error)
 	GetOpenOrders(*model.CurrencyPair) ([]model.Order, error)
 	GetContracts() ([]model.Contract, error)
 	PostOrder(*model.NewOrder) (*model.Order, error)

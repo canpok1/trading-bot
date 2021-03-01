@@ -20,9 +20,42 @@ func (c *Client) GetOrderRate(p *model.CurrencyPair, s model.OrderSide) (*model.
 	return c.getOrderRate(s, p)
 }
 
-// GetAccountBalance 残高取得
-func (c *Client) GetAccountBalance() (*model.Balance, error) {
-	return c.getAccountBalance()
+// GetBalance 残高取得
+func (c *Client) GetBalance(currency *model.CurrencyType) (*model.Balance, error) {
+	res, err := c.getAccountBalance()
+	if err != nil {
+		return nil, err
+	}
+
+	switch *currency {
+	case model.JPY:
+		return &model.Balance{
+			Currency: *currency,
+			Amount:   toFloat32(res.Jpy, 0),
+		}, nil
+	case model.BTC:
+		return &model.Balance{
+			Currency: *currency,
+			Amount:   toFloat32(res.Btc, 0),
+		}, nil
+	case model.ETC:
+		return &model.Balance{
+			Currency: *currency,
+			Amount:   toFloat32(res.Etc, 0),
+		}, nil
+	case model.FCT:
+		return &model.Balance{
+			Currency: *currency,
+			Amount:   toFloat32(res.Fct, 0),
+		}, nil
+	case model.MONA:
+		return &model.Balance{
+			Currency: *currency,
+			Amount:   toFloat32(res.Mona, 0),
+		}, nil
+	default:
+		return nil, fmt.Errorf("failed to get balance, unknown ")
+	}
 }
 
 // GetOpenOrders 未決済の注文取得

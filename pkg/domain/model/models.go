@@ -53,8 +53,8 @@ type OrderRate struct {
 
 // Balance 残高
 type Balance struct {
-	Jpy float32
-	Btc float32
+	Currency CurrencyType
+	Amount   float32
 }
 
 // NewOrder 新規注文

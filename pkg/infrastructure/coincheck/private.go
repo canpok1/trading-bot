@@ -70,26 +70,13 @@ func (c *Client) getRate(p *model.CurrencyPair) (float32, error) {
 }
 
 // getAccountBalance 残高取得
-func (c *Client) getAccountBalance() (*model.Balance, error) {
+func (c *Client) getAccountBalance() (res *Balance, err error) {
 	u, err := c.makeURL("/api/accounts/balance", nil)
 	if err != nil {
 		return nil, err
 	}
-
-	var res struct {
-		Success bool   `json:"success"`
-		Error   string `json:"error"`
-		Jpy     string `json:"jpy"`
-		Btc     string `json:"btc"`
-	}
-	if err := c.requestWithValidation(http.MethodGet, u, "", &res); err != nil {
-		return nil, err
-	}
-
-	return &model.Balance{
-		Jpy: toFloat32(res.Jpy, 0),
-		Btc: toFloat32(res.Btc, 0),
-	}, nil
+	err = c.requestWithValidation(http.MethodGet, u, "", &res)
+	return
 }
 
 // getOpenOrders 未決済の注文一覧

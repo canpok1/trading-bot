@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	// 買い注文1回に使う金額(JPY)
-	fundJpy float32 = 500
+	// 買い注文1回に使う日本円残高の割合
+	fundsRatio float32 = 0.7
 
 	// 売り注文時のレート上乗せ分(%)
 	// 売り注文レート = 買い注文のレート × (1 + upRate)
@@ -86,8 +86,14 @@ func (f *FollowUptrendStrategy) checkNewOrder() error {
 		return nil
 	}
 
+	balance, err := f.facade.GetJpyBalance()
+	if err != nil {
+		return err
+	}
+	amount := balance.Amount * fundsRatio
+
 	log.Printf("[trade] sending buy order ...")
-	pos1, err := f.facade.SendMarketBuyOrder(fundJpy, nil)
+	pos1, err := f.facade.SendMarketBuyOrder(amount, nil)
 	if err != nil {
 		return err
 	}

@@ -248,3 +248,9 @@ func (f *Facade) CancelSettleOrder(p *model.Position) (*model.Position, error) {
 func (f *Facade) GetRateHistorySizeMax() int {
 	return f.rateRepo.GetHistorySizeMax()
 }
+
+// GetJpyBalance 日本円の残高を取得
+func (f *Facade) GetJpyBalance() (*model.Balance, error) {
+	c := model.JPY
+	return f.exClient.GetBalance(&c)
+}

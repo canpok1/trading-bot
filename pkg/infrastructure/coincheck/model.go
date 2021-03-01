@@ -47,3 +47,12 @@ type OrderTransaction struct {
 	Liquidity   string            `json:"liquidity"`
 	Side        string            `json:"side"`
 }
+
+// Balance 残高
+type Balance struct {
+	Jpy  string `json:"jpy"`
+	Btc  string `json:"btc"`
+	Etc  string `json:"etc"`
+	Fct  string `json:"fct"`
+	Mona string `json:"mona"`
+}
