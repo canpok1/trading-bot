@@ -2,9 +2,9 @@
 strategy_name = "follow_uptrend"
 
 trade_interval_seconds = 60
-rate_history_size = 6
+rate_history_size = 15
 target_currency = "mona"
-warmup_time_seconds = 60
+rate_log_interval_seconds = 60
 
 # 取引所
 [exchange]

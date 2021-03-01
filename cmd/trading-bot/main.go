@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -16,6 +17,10 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"golang.org/x/sync/errgroup"
+)
+
+const (
+	rateHistorySize = 5000
 )
 
 func main() {
@@ -32,7 +37,7 @@ func main() {
 	}
 
 	exCli := &coincheck.Client{APIAccessKey: conf.Exchange.AccessKey, APISecretKey: conf.Exchange.SecretKey}
-	rateRepo := memory.NewRateRepository(conf.RateHistorySize)
+	rateRepo := memory.NewRateRepository(rateHistorySize)
 	orderRepo := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
 	contractRepo := orderRepo
 	positionRepo := orderRepo
@@ -59,6 +64,7 @@ func main() {
 	log.Printf("strategy: %s\n", conf.StrategyName)
 	log.Printf("trade interval: %dsec\n", conf.TradeIntervalSeconds)
 	log.Printf("target: %s\n", conf.TargetCurrency)
+	log.Printf("rate log interval: %dsec\n", conf.RateLogIntervalSeconds)
 	log.Println("======================================")
 
 	rootCtx, cancel := context.WithCancel(context.Background())
@@ -75,6 +81,38 @@ func main() {
 		}
 		return nil
 	})
+
+	errGroup.Go(func() error {
+		if conf.RateLogIntervalSeconds == 0 {
+			return nil
+		}
+
+		// レートの定期保存
+		jst := time.FixedZone("Asia/Tokyo", 9*60*60)
+		beginTime := time.Now().UTC().In(jst).Format("20060102_150405_JST")
+		loggers := []usecase.RateLogger{}
+
+		for _, pair := range []model.CurrencyPair{model.BtcJpy, model.MonaJpy} {
+			path := fmt.Sprintf("./data/simulator/historical_%s_%s.csv", pair.String(), beginTime)
+			loggers = append(loggers, *usecase.NewRateLogger(exCli, &pair, path))
+		}
+
+		ticker := time.NewTicker(time.Duration(conf.RateLogIntervalSeconds) * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				for _, logger := range loggers {
+					if err := logger.AppendLog(); err != nil {
+						return fmt.Errorf("failed to logging rate, error: %w", err)
+					}
+				}
+			case <-ctx.Done():
+				return nil
+			}
+		}
+	})
+
 	errGroup.Go(func() error {
 		ticker := time.NewTicker(time.Duration(conf.TradeIntervalSeconds) * time.Second)
 		defer ticker.Stop()

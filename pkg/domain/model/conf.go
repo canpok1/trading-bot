@@ -2,13 +2,12 @@ package model
 
 // Config ボット用設定
 type Config struct {
-	StrategyName         string   `toml:"strategy_name"`
-	TradeIntervalSeconds int      `toml:"trade_interval_seconds"`
-	RateHistorySize      int      `toml:"rate_history_size"`
-	TargetCurrency       string   `toml:"target_currency"`
-	WarmupTimeSeconds    int      `toml:"warmup_time_seconds"`
-	Exchange             Exchange `toml:"exchange"`
-	DB                   DB       `toml:"db"`
+	StrategyName           string   `toml:"strategy_name"`
+	TradeIntervalSeconds   int      `toml:"trade_interval_seconds"`
+	TargetCurrency         string   `toml:"target_currency"`
+	RateLogIntervalSeconds int      `toml:"rate_log_interval_seconds"`
+	Exchange               Exchange `toml:"exchange"`
+	DB                     DB       `toml:"db"`
 }
 
 // Exchange 取引所向け設定

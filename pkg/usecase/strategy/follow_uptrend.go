@@ -27,17 +27,25 @@ const (
 
 	// 同時に持てるポジションの最大数
 	positionCountMax = 1
+
+	// レート情報の最低数
+	requiredRateCount = 15
+
+	// 短期を確認する際の確認対象レート数
+	shortTermSize = 15
 )
 
 // FollowUptrendStrategy 上昇トレンド追従戦略
 type FollowUptrendStrategy struct {
-	facade *trade.Facade
+	facade   *trade.Facade
+	analyzer *RateAnalyzer
 }
 
 // NewFollowUptrendStrategy 戦略を生成
 func NewFollowUptrendStrategy(facade *trade.Facade) *FollowUptrendStrategy {
 	return &FollowUptrendStrategy{
-		facade: facade,
+		facade:   facade,
+		analyzer: &RateAnalyzer{ShortTermSize: shortTermSize},
 	}
 }
 
@@ -45,10 +53,6 @@ func NewFollowUptrendStrategy(facade *trade.Facade) *FollowUptrendStrategy {
 func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
 	if err := f.facade.FetchAll(); err != nil {
 		return err
-	}
-	if f.isWarmingUp() {
-		log.Println("warming up ...")
-		return nil
 	}
 
 	buyRate, sellRate, err := f.getRate()
@@ -81,8 +85,8 @@ func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
 }
 
 func (f *FollowUptrendStrategy) checkNewOrder() error {
-	if !f.isUptrend() {
-		log.Printf("[check] current trend is not UP => skip new order")
+	if !f.analyzer.IsBuySignal(f.facade.GetSellRateHistory()) {
+		log.Printf("[check] no buy signal => skip new order")
 		return nil
 	}
 
@@ -171,10 +175,6 @@ func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 	}
 
 	return nil
-}
-
-func (f *FollowUptrendStrategy) isWarmingUp() bool {
-	return len(f.facade.GetSellRateHistory()) < f.facade.GetRateHistorySizeMax()
 }
 
 func (f *FollowUptrendStrategy) getRate() (buyRate, sellRate float32, err error) {
@@ -291,4 +291,39 @@ func toDisplayStr(v *float32, def string) string {
 		return def
 	}
 	return fmt.Sprintf("%.3f", *v)
+}
+
+// RateAnalyzer レート分析
+type RateAnalyzer struct {
+	ShortTermSize int
+}
+
+// IsBuySignal 買いシグナルかを判定
+func (a *RateAnalyzer) IsBuySignal(rates []float32) bool {
+	// レート情報が少ないときは判断不可
+	if len(rates) < requiredRateCount {
+		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), requiredRateCount)
+		return false
+	}
+
+	// 短期間のレート
+	shortTermRates := rates
+	if len(shortTermRates) > a.ShortTermSize {
+		shortTermRates = rates[len(rates)-a.ShortTermSize:]
+	}
+
+	// 一定期間の間の売レートの上昇回数が半分を超えてたら上昇トレンドと判断
+	count := 0
+	size := len(shortTermRates)
+	for i := 1; i < size; i++ {
+		if rates[i-1] < rates[i] {
+			count++
+		}
+	}
+	if count > ((size - 1) / 2) {
+		log.Printf("[check] rise count: %d / %d => UP trend", count, size-1)
+		return true
+	}
+	log.Printf("[check] rise count: %d / %d => not UP trend", count, size-1)
+	return false
 }
