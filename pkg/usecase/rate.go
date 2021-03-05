@@ -32,6 +32,14 @@ func (l *RateLogger) AppendLog() error {
 	}
 	defer file.Close()
 
+	stat, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if stat.Size() == 0 {
+		fmt.Fprintf(file, "日時,買いレート,売りレート\n")
+	}
+
 	buyOrder, err := l.exCli.GetOrderRate(l.pair, model.BuySide)
 	if err != nil {
 		return err

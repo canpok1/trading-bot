@@ -93,7 +93,10 @@ func (e *ExchangeMock) GetOrderRate(p *model.CurrencyPair, side model.OrderSide)
 
 // GetBalance 残高を取得
 func (e *ExchangeMock) GetBalance(currency *model.CurrencyType) (*model.Balance, error) {
-	return nil, nil
+	return &model.Balance{
+		Currency: *currency,
+		Amount:   100000,
+	}, nil
 }
 
 // GetOpenOrders 未決済の注文を取得

@@ -6,6 +6,8 @@ github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD
 github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
 github.com/jinzhu/now v1.1.1 h1:g39TucaRWyV3dwDO++eEc6qf8TVIQ/Da48WmqjZ3i7E=
 github.com/jinzhu/now v1.1.1/go.mod h1:d3SSVoowX0Lcu0IBviAWJpolVfI5UJVZZ7cO71lE/z8=
+github.com/markcheno/go-talib v0.0.0-20190307022042-cd53a9264d70 h1:+iG37/Aw61Oc+ZJ4DSxQF2+K0e4ZiMidI7ytWuW4/cI=
+github.com/markcheno/go-talib v0.0.0-20190307022042-cd53a9264d70/go.mod h1:xsYvOKWtDWoDV0kdN3U8tYZ4lVrhjqf64cJRzR4ScTI=
 golang.org/x/sync v0.0.0-20210220032951-036812b2e83c h1:5KslGYwFpkhGh+Q16bwMP3cOontH8FOep7tGV86Y7SQ=
 golang.org/x/sync v0.0.0-20210220032951-036812b2e83c/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 gorm.io/driver/mysql v1.0.4 h1:TATTzt+kR+IV0+h3iUB3dHUe8omCvQ0rOkmfCsUBohk=

@@ -7,20 +7,22 @@ import (
 	"time"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/usecase/trade"
+
+	"github.com/markcheno/go-talib"
 )
 
 const (
 	// 買い注文1回に使う日本円残高の割合
-	fundsRatio float32 = 0.7
+	fundsRatio float32 = 0.3
 
 	// 売り注文時のレート上乗せ分(%)
 	// 売り注文レート = 買い注文のレート × (1 + upRate)
-	upRate float32 = 0.01
+	upRate float32 = 0.005
 
-	// キャンセルの基準値(%)
-	// 現レートと指値との差分が基準値以上ならキャンセルする
-	// 差分 = (売指レート - 現レート) / 現レート
-	cancelBorderPer float32 = 0.10
+	// 売り注文をロスカットする下限の割合
+	// 現レートが下限を下回るとロスカットする
+	// 下限 = 注文レート * 下限の割合
+	lossCutLowerLimitPer float32 = 0.990
 
 	// 約定チェック間隔
 	contractCheckInterval = 2 * time.Second
@@ -28,11 +30,11 @@ const (
 	// 同時に持てるポジションの最大数
 	positionCountMax = 1
 
-	// レート情報の最低数
-	requiredRateCount = 15
-
 	// 短期を確認する際の確認対象レート数
-	shortTermSize = 15
+	shortTermSize = 5
+
+	// 長期を確認する際の確認対象レート数
+	longTermSize = 30
 )
 
 // FollowUptrendStrategy 上昇トレンド追従戦略
@@ -44,8 +46,11 @@ type FollowUptrendStrategy struct {
 // NewFollowUptrendStrategy 戦略を生成
 func NewFollowUptrendStrategy(facade *trade.Facade) *FollowUptrendStrategy {
 	return &FollowUptrendStrategy{
-		facade:   facade,
-		analyzer: &RateAnalyzer{ShortTermSize: shortTermSize},
+		facade: facade,
+		analyzer: &RateAnalyzer{
+			ShortTermSize: shortTermSize,
+			LongTermSize:  longTermSize,
+		},
 	}
 }
 
@@ -89,6 +94,15 @@ func (f *FollowUptrendStrategy) checkNewOrder() error {
 		log.Printf("[check] no buy signal => skip new order")
 		return nil
 	}
+
+	// buyRate, sellRate, err := f.getRate()
+	// if err != nil {
+	// 	return err
+	// }
+	// if sellRate < buyRate*lossCutLowerLimitPer {
+	// 	log.Printf("[check] sellRate is too low (sell:%.3f, buy:%.3f)=> skip new order", sellRate, buyRate)
+	// 	return nil
+	// }
 
 	balance, err := f.facade.GetJpyBalance()
 	if err != nil {
@@ -149,11 +163,7 @@ func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 			pos.CloserOrder.Amount,
 		)
 
-		shouldLossCut, err := f.shouldLossCut(pos.CloserOrder)
-		if err != nil {
-			return err
-		}
-
+		shouldLossCut := f.analyzer.ShouldLossCut(f.facade.GetSellRateHistory(), pos.CloserOrder)
 		if shouldLossCut {
 			log.Printf("[trade] sending cancel order ...")
 			pos2, err := f.facade.CancelSettleOrder(pos)
@@ -256,23 +266,6 @@ func (f *FollowUptrendStrategy) sendSellOrder(p *model.Position) (*model.Positio
 	return f.facade.SendSellOrder(amount, rate*(1.0+upRate), p)
 }
 
-func (f *FollowUptrendStrategy) shouldLossCut(sellOrder *model.Order) (bool, error) {
-	// 指値までの差が現在レートから離れすぎてたら損切り
-	currentRate, err := f.facade.GetSellRate()
-	if err != nil {
-		return false, err
-	}
-
-	pair := f.facade.GetCurrencyPair().String()
-	diff := (*sellOrder.Rate - currentRate) / currentRate
-	if diff > cancelBorderPer {
-		log.Printf("[check] order[rate:%.3f] %s[%.3f] diff: %.3f > border: %.3f => should loss cut\n", *sellOrder.Rate, pair, currentRate, diff, cancelBorderPer)
-		return true, nil
-	}
-	log.Printf("[check] order[rate:%.3f] %s[%.3f] diff: %.3f > border: %.3f => skip loss cut\n", *sellOrder.Rate, pair, currentRate, diff, cancelBorderPer)
-	return false, nil
-}
-
 func (f *FollowUptrendStrategy) sendLossCutSellOrder(p *model.Position) (*model.Position, error) {
 	contracts, err := f.facade.GetContracts(p.OpenerOrder.ID)
 	if err != nil {
@@ -296,34 +289,97 @@ func toDisplayStr(v *float32, def string) string {
 // RateAnalyzer レート分析
 type RateAnalyzer struct {
 	ShortTermSize int
+	LongTermSize  int
 }
 
 // IsBuySignal 買いシグナルかを判定
 func (a *RateAnalyzer) IsBuySignal(rates []float32) bool {
 	// レート情報が少ないときは判断不可
-	if len(rates) < requiredRateCount {
-		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), requiredRateCount)
+	if len(rates) < a.LongTermSize {
+		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), a.LongTermSize)
 		return false
 	}
 
-	// 短期間のレート
-	shortTermRates := rates
-	if len(shortTermRates) > a.ShortTermSize {
-		shortTermRates = rates[len(rates)-a.ShortTermSize:]
+	rr := []float64{}
+	for _, r := range rates {
+		rr = append(rr, float64(r))
 	}
 
-	// 一定期間の間の売レートの上昇回数が半分を超えてたら上昇トレンドと判断
+	sRates := talib.Ema(rr, a.ShortTermSize)
+	sRate := sRates[len(sRates)-1]
+	lRates := talib.Ema(rr, a.LongTermSize)
+	lRate := lRates[len(lRates)-1]
+
+	// 下降トレンド（短期の移動平均＜長期の移動平均）
+	if sRate < lRate {
+		log.Printf("[check] SMA short:%.3f < long:%.3f => not UP trend", sRate, lRate)
+		return false
+	}
+
+	// 上昇続いてる？
 	count := 0
-	size := len(shortTermRates)
-	for i := 1; i < size; i++ {
+	size := len(rates)
+	begin := size - a.LongTermSize
+	end := size - 1
+	for i := begin + 1; i <= end; i++ {
 		if rates[i-1] < rates[i] {
 			count++
 		}
 	}
-	if count > ((size - 1) / 2) {
-		log.Printf("[check] rise count: %d / %d => UP trend", count, size-1)
-		return true
+	if count < (a.LongTermSize / 2) {
+		log.Printf("[check] rise count: %d / %d => not UP trend", count, a.LongTermSize)
+		return false
 	}
-	log.Printf("[check] rise count: %d / %d => not UP trend", count, size-1)
-	return false
+	log.Printf("[check] rise count: %d / %d => UP trend", count, a.LongTermSize)
+	return true
+}
+
+// ShouldLossCut ロスカットすべきか判定
+func (a *RateAnalyzer) ShouldLossCut(rates []float32, sellOrder *model.Order) bool {
+	// レート情報が少ないときは判断不可
+	if len(rates) < a.LongTermSize {
+		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), a.LongTermSize)
+		return false
+	}
+
+	rr := []float64{}
+	for _, r := range rates {
+		rr = append(rr, float64(r))
+	}
+
+	sRates := talib.Ema(rr, a.ShortTermSize)
+	sRate := sRates[len(sRates)-1]
+	lRates := talib.Ema(rr, a.LongTermSize)
+	lRate := lRates[len(lRates)-1]
+
+	// 上昇トレンドになりそうなら待機
+	if sRate >= lRate {
+		log.Printf("[check] SMA short:%.3f >= long:%.3f => UP trend => skip loss cut", sRate, lRate)
+		return false
+	}
+
+	if sellOrder.Rate == nil {
+		return false
+	}
+	// 下限を下回ったらロスカット
+	currentRate := rates[len(rates)-1]
+	lowerLimit := *sellOrder.Rate * lossCutLowerLimitPer
+	if lowerLimit <= currentRate {
+		log.Printf(
+			"[check] order[rate:%.3f] * %.3f = lowerLimit:%.3f <= %s[rate:%.3f] => skip loss cut\n",
+			*sellOrder.Rate,
+			lossCutLowerLimitPer,
+			lowerLimit,
+			sellOrder.Pair.String(),
+			currentRate)
+		return false
+	}
+	log.Printf(
+		"[check] order[rate:%.3f] * %.3f = lowerLimit:%.3f > %s[rate:%.3f] => should loss cut\n",
+		*sellOrder.Rate,
+		lossCutLowerLimitPer,
+		lowerLimit,
+		sellOrder.Pair.String(),
+		currentRate)
+	return true
 }

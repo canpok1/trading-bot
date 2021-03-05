@@ -27,7 +27,7 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	historical, err := os.Open("data/simulator/historical_btc_jpy.csv")
+	historical, err := os.Open("data/simulator/historical_btc_jpy_20210303_005501_JST.csv")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
