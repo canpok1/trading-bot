@@ -8,7 +8,6 @@ import (
 
 // Facade トレード操作をまとめたもの
 type Facade struct {
-	pair         *model.CurrencyPair
 	exClient     exchange.Client
 	rateRepo     repository.RateRepository
 	orderRepo    repository.OrderRepository
@@ -18,7 +17,6 @@ type Facade struct {
 
 // NewFacade 生成
 func NewFacade(
-	p *model.CurrencyPair,
 	exCli exchange.Client,
 	rateRepo repository.RateRepository,
 	orderRepo repository.OrderRepository,
@@ -26,7 +24,6 @@ func NewFacade(
 	positionRepo repository.PositionRepository,
 ) *Facade {
 	return &Facade{
-		pair:         p,
 		exClient:     exCli,
 		rateRepo:     rateRepo,
 		orderRepo:    orderRepo,
@@ -36,8 +33,8 @@ func NewFacade(
 }
 
 // FetchAll 情報更新
-func (f *Facade) FetchAll() error {
-	if err := f.FetchRate(); err != nil {
+func (f *Facade) FetchAll(pair *model.CurrencyPair) error {
+	if err := f.FetchRate(pair); err != nil {
 		return err
 	}
 
@@ -45,7 +42,7 @@ func (f *Facade) FetchAll() error {
 		return err
 	}
 
-	if err := f.FetchOrders(); err != nil {
+	if err := f.FetchOrders(pair); err != nil {
 		return err
 	}
 
@@ -53,8 +50,8 @@ func (f *Facade) FetchAll() error {
 }
 
 // FetchRate レートを更新
-func (f *Facade) FetchRate() error {
-	buyRate, err := f.exClient.GetOrderRate(f.pair, model.BuySide)
+func (f *Facade) FetchRate(pair *model.CurrencyPair) error {
+	buyRate, err := f.exClient.GetOrderRate(pair, model.BuySide)
 	if err != nil {
 		return err
 	}
@@ -62,7 +59,7 @@ func (f *Facade) FetchRate() error {
 		return err
 	}
 
-	sellRate, err := f.exClient.GetOrderRate(f.pair, model.SellSide)
+	sellRate, err := f.exClient.GetOrderRate(pair, model.SellSide)
 	if err != nil {
 		return err
 	}
@@ -106,8 +103,8 @@ func (f *Facade) FetchContracts() error {
 }
 
 // FetchOrders 注文情報を更新
-func (f *Facade) FetchOrders() error {
-	openOrders, err := f.exClient.GetOpenOrders(f.pair)
+func (f *Facade) FetchOrders(pair *model.CurrencyPair) error {
+	openOrders, err := f.exClient.GetOpenOrders(pair)
 	if err != nil {
 		return err
 	}
@@ -137,18 +134,13 @@ func (f *Facade) FetchOrders() error {
 	return nil
 }
 
-// GetCurrencyPair 通貨ペアを取得
-func (f *Facade) GetCurrencyPair() *model.CurrencyPair {
-	return f.pair
-}
-
 // getOrderRate レートを取得
-func (f *Facade) getOrderRate(side model.OrderSide) (float32, error) {
-	if rate := f.rateRepo.GetCurrentRate(&f.pair.Key, side); rate != nil {
+func (f *Facade) getOrderRate(pair *model.CurrencyPair, side model.OrderSide) (float32, error) {
+	if rate := f.rateRepo.GetCurrentRate(&pair.Key, side); rate != nil {
 		return *rate, nil
 	}
 
-	rate, err := f.exClient.GetOrderRate(f.pair, side)
+	rate, err := f.exClient.GetOrderRate(pair, side)
 	if err != nil {
 		return 0, err
 	}
@@ -157,23 +149,23 @@ func (f *Facade) getOrderRate(side model.OrderSide) (float32, error) {
 }
 
 // GetBuyRate 買レートを取得
-func (f *Facade) GetBuyRate() (float32, error) {
-	return f.getOrderRate(model.BuySide)
+func (f *Facade) GetBuyRate(pair *model.CurrencyPair) (float32, error) {
+	return f.getOrderRate(pair, model.BuySide)
 }
 
 // GetSellRate 売レートを取得
-func (f *Facade) GetSellRate() (float32, error) {
-	return f.getOrderRate(model.SellSide)
+func (f *Facade) GetSellRate(pair *model.CurrencyPair) (float32, error) {
+	return f.getOrderRate(pair, model.SellSide)
 }
 
 // GetBuyRateHistory 買レートの遷移を取得
-func (f *Facade) GetBuyRateHistory() []float32 {
-	return f.rateRepo.GetRateHistory(&f.pair.Key, model.BuySide)
+func (f *Facade) GetBuyRateHistory(pair *model.CurrencyPair) []float32 {
+	return f.rateRepo.GetRateHistory(&pair.Key, model.BuySide)
 }
 
 // GetSellRateHistory 売レートの遷移を取得
-func (f *Facade) GetSellRateHistory() []float32 {
-	return f.rateRepo.GetRateHistory(&f.pair.Key, model.SellSide)
+func (f *Facade) GetSellRateHistory(pair *model.CurrencyPair) []float32 {
+	return f.rateRepo.GetRateHistory(&pair.Key, model.SellSide)
 }
 
 // GetOpenPositions オープン状態のポジションを取得
@@ -192,19 +184,19 @@ func (f *Facade) GetOrder(orderID uint64) (*model.Order, error) {
 }
 
 // SendMarketBuyOrder 成行買い注文
-func (f *Facade) SendMarketBuyOrder(amount float32, p *model.Position) (*model.Position, error) {
+func (f *Facade) SendMarketBuyOrder(pair *model.CurrencyPair, amount float32, p *model.Position) (*model.Position, error) {
 	return f.postOrder(&model.NewOrder{
 		Type:            model.MarketBuy,
-		Pair:            *f.GetCurrencyPair(),
+		Pair:            *pair,
 		MarketBuyAmount: &amount,
 	}, p)
 }
 
 // SendMarketSellOrder 成行売り注文
-func (f *Facade) SendMarketSellOrder(amount float32, p *model.Position) (*model.Position, error) {
+func (f *Facade) SendMarketSellOrder(pair *model.CurrencyPair, amount float32, p *model.Position) (*model.Position, error) {
 	return f.postOrder(&model.NewOrder{
 		Type:            model.MarketSell,
-		Pair:            *f.GetCurrencyPair(),
+		Pair:            *pair,
 		Amount:          &amount,
 		Rate:            nil,
 		MarketBuyAmount: nil,
@@ -213,10 +205,10 @@ func (f *Facade) SendMarketSellOrder(amount float32, p *model.Position) (*model.
 }
 
 // SendSellOrder 売り注文
-func (f *Facade) SendSellOrder(amount float32, rate float32, p *model.Position) (*model.Position, error) {
+func (f *Facade) SendSellOrder(pair *model.CurrencyPair, amount float32, rate float32, p *model.Position) (*model.Position, error) {
 	return f.postOrder(&model.NewOrder{
 		Type:   model.Sell,
-		Pair:   *f.GetCurrencyPair(),
+		Pair:   *pair,
 		Amount: &amount,
 		Rate:   &rate,
 	}, p)

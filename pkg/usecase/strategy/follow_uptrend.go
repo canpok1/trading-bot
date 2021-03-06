@@ -8,55 +8,43 @@ import (
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/usecase/trade"
 
+	"github.com/BurntSushi/toml"
 	"github.com/markcheno/go-talib"
 )
 
-const (
-	// 買い注文1回に使う日本円残高の割合
-	fundsRatio float32 = 0.3
-
-	// 売り注文時のレート上乗せ分(%)
-	// 売り注文レート = 買い注文のレート × (1 + upRate)
-	upRate float32 = 0.005
-
-	// 売り注文をロスカットする下限の割合
-	// 現レートが下限を下回るとロスカットする
-	// 下限 = 注文レート * 下限の割合
-	lossCutLowerLimitPer float32 = 0.990
-
-	// 約定チェック間隔
-	contractCheckInterval = 2 * time.Second
-
-	// 同時に持てるポジションの最大数
-	positionCountMax = 1
-
-	// 短期を確認する際の確認対象レート数
-	shortTermSize = 5
-
-	// 長期を確認する際の確認対象レート数
-	longTermSize = 30
-)
+const ()
 
 // FollowUptrendStrategy 上昇トレンド追従戦略
 type FollowUptrendStrategy struct {
-	facade   *trade.Facade
-	analyzer *RateAnalyzer
+	facade       *trade.Facade
+	interval     time.Duration
+	currencyPair *model.CurrencyPair
+
+	fundsRatio            float32
+	upRate                float32
+	lossCutLowerLimitPer  float32
+	contractCheckInterval time.Duration
+	positionCountMax      int
+	shortTermSize         int
+	longTermSize          int
 }
 
 // NewFollowUptrendStrategy 戦略を生成
-func NewFollowUptrendStrategy(facade *trade.Facade) *FollowUptrendStrategy {
-	return &FollowUptrendStrategy{
+func NewFollowUptrendStrategy(facade *trade.Facade) (*FollowUptrendStrategy, error) {
+	s := &FollowUptrendStrategy{
 		facade: facade,
-		analyzer: &RateAnalyzer{
-			ShortTermSize: shortTermSize,
-			LongTermSize:  longTermSize,
-		},
 	}
+
+	if err := s.loadConfig(); err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
 
 // Trade 取引実施
 func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
-	if err := f.facade.FetchAll(); err != nil {
+	if err := f.facade.FetchAll(f.currencyPair); err != nil {
 		return err
 	}
 
@@ -64,20 +52,20 @@ func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("===== rate[%s] buy: %.3f sell: %.3f =====\n", f.facade.GetCurrencyPair(), buyRate, sellRate)
+	log.Printf("===== rate[%s] buy: %.3f sell: %.3f =====\n", f.currencyPair, buyRate, sellRate)
 
 	pp, err := f.facade.GetOpenPositions()
 	if err != nil {
 		return err
 	}
 
-	if len(pp) < positionCountMax {
-		log.Printf("[check] open poss [count: %d] < %d => check new order", len(pp), positionCountMax)
+	if len(pp) < f.positionCountMax {
+		log.Printf("[check] open poss [count: %d] < %d => check new order", len(pp), f.positionCountMax)
 		if err := f.checkNewOrder(); err != nil {
 			return err
 		}
 	} else {
-		log.Printf("[check] open poss [count: %d] >= %d => skip new order", len(pp), positionCountMax)
+		log.Printf("[check] open poss [count: %d] >= %d => skip new order", len(pp), f.positionCountMax)
 	}
 
 	for _, p := range pp {
@@ -90,7 +78,7 @@ func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
 }
 
 func (f *FollowUptrendStrategy) checkNewOrder() error {
-	if !f.analyzer.IsBuySignal(f.facade.GetSellRateHistory()) {
+	if !f.IsBuySignal(f.facade.GetSellRateHistory(f.currencyPair)) {
 		log.Printf("[check] no buy signal => skip new order")
 		return nil
 	}
@@ -108,10 +96,10 @@ func (f *FollowUptrendStrategy) checkNewOrder() error {
 	if err != nil {
 		return err
 	}
-	amount := balance.Amount * fundsRatio
+	amount := balance.Amount * f.fundsRatio
 
 	log.Printf("[trade] sending buy order ...")
-	pos1, err := f.facade.SendMarketBuyOrder(amount, nil)
+	pos1, err := f.facade.SendMarketBuyOrder(f.currencyPair, amount, nil)
 	if err != nil {
 		return err
 	}
@@ -163,7 +151,7 @@ func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 			pos.CloserOrder.Amount,
 		)
 
-		shouldLossCut := f.analyzer.ShouldLossCut(f.facade.GetSellRateHistory(), pos.CloserOrder)
+		shouldLossCut := f.ShouldLossCut(f.facade.GetSellRateHistory(f.currencyPair), pos.CloserOrder)
 		if shouldLossCut {
 			log.Printf("[trade] sending cancel order ...")
 			pos2, err := f.facade.CancelSettleOrder(pos)
@@ -188,11 +176,11 @@ func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 }
 
 func (f *FollowUptrendStrategy) getRate() (buyRate, sellRate float32, err error) {
-	b, err := f.facade.GetBuyRate()
+	b, err := f.facade.GetBuyRate(f.currencyPair)
 	if err != nil {
 		return 0, 0, nil
 	}
-	s, err := f.facade.GetSellRate()
+	s, err := f.facade.GetSellRate(f.currencyPair)
 	if err != nil {
 		return 0, 0, nil
 	}
@@ -203,7 +191,7 @@ func (f *FollowUptrendStrategy) getRate() (buyRate, sellRate float32, err error)
 func (f *FollowUptrendStrategy) isUptrend() bool {
 	// 一定期間の間の売レートの上昇回数が半分を超えてたら上昇トレンドと判断
 	count := 0
-	rates := f.facade.GetSellRateHistory()
+	rates := f.facade.GetSellRateHistory(f.currencyPair)
 	size := len(rates)
 	for i := 1; i < size; i++ {
 		if rates[i-1] < rates[i] {
@@ -226,7 +214,7 @@ func (f *FollowUptrendStrategy) isUptrend() bool {
 func (f *FollowUptrendStrategy) waitContract(orderID uint64) ([]model.Contract, error) {
 	log.Printf("[trade] waiting for contract ...")
 	for {
-		if err := f.facade.FetchAll(); err != nil {
+		if err := f.facade.FetchAll(f.currencyPair); err != nil {
 			return nil, err
 		}
 
@@ -239,7 +227,7 @@ func (f *FollowUptrendStrategy) waitContract(orderID uint64) ([]model.Contract, 
 		}
 
 		log.Printf("[trade] not contracted, waiting for contract ...")
-		time.Sleep(contractCheckInterval)
+		time.Sleep(f.contractCheckInterval)
 	}
 	contracts, err := f.facade.GetContracts(orderID)
 	if err != nil {
@@ -263,7 +251,7 @@ func (f *FollowUptrendStrategy) sendSellOrder(p *model.Position) (*model.Positio
 	}
 	rate = rate / float32(len(contracts))
 
-	return f.facade.SendSellOrder(amount, rate*(1.0+upRate), p)
+	return f.facade.SendSellOrder(f.currencyPair, amount, rate*(1.0+f.upRate), p)
 }
 
 func (f *FollowUptrendStrategy) sendLossCutSellOrder(p *model.Position) (*model.Position, error) {
@@ -276,7 +264,7 @@ func (f *FollowUptrendStrategy) sendLossCutSellOrder(p *model.Position) (*model.
 		amount += c.IncreaseAmount
 	}
 
-	return f.facade.SendMarketSellOrder(amount, p)
+	return f.facade.SendMarketSellOrder(f.currencyPair, amount, p)
 }
 
 func toDisplayStr(v *float32, def string) string {
@@ -286,17 +274,11 @@ func toDisplayStr(v *float32, def string) string {
 	return fmt.Sprintf("%.3f", *v)
 }
 
-// RateAnalyzer レート分析
-type RateAnalyzer struct {
-	ShortTermSize int
-	LongTermSize  int
-}
-
 // IsBuySignal 買いシグナルかを判定
-func (a *RateAnalyzer) IsBuySignal(rates []float32) bool {
+func (f *FollowUptrendStrategy) IsBuySignal(rates []float32) bool {
 	// レート情報が少ないときは判断不可
-	if len(rates) < a.LongTermSize {
-		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), a.LongTermSize)
+	if len(rates) < f.longTermSize {
+		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), f.longTermSize)
 		return false
 	}
 
@@ -305,9 +287,9 @@ func (a *RateAnalyzer) IsBuySignal(rates []float32) bool {
 		rr = append(rr, float64(r))
 	}
 
-	sRates := talib.Ema(rr, a.ShortTermSize)
+	sRates := talib.Ema(rr, f.shortTermSize)
 	sRate := sRates[len(sRates)-1]
-	lRates := talib.Ema(rr, a.LongTermSize)
+	lRates := talib.Ema(rr, f.longTermSize)
 	lRate := lRates[len(lRates)-1]
 
 	// 下降トレンド（短期の移動平均＜長期の移動平均）
@@ -319,26 +301,26 @@ func (a *RateAnalyzer) IsBuySignal(rates []float32) bool {
 	// 上昇続いてる？
 	count := 0
 	size := len(rates)
-	begin := size - a.LongTermSize
+	begin := size - f.longTermSize
 	end := size - 1
 	for i := begin + 1; i <= end; i++ {
 		if rates[i-1] < rates[i] {
 			count++
 		}
 	}
-	if count < (a.LongTermSize / 2) {
-		log.Printf("[check] rise count: %d / %d => not UP trend", count, a.LongTermSize)
+	if count < (f.longTermSize / 2) {
+		log.Printf("[check] rise count: %d / %d => not UP trend", count, f.longTermSize)
 		return false
 	}
-	log.Printf("[check] rise count: %d / %d => UP trend", count, a.LongTermSize)
+	log.Printf("[check] rise count: %d / %d => UP trend", count, f.longTermSize)
 	return true
 }
 
 // ShouldLossCut ロスカットすべきか判定
-func (a *RateAnalyzer) ShouldLossCut(rates []float32, sellOrder *model.Order) bool {
+func (f *FollowUptrendStrategy) ShouldLossCut(rates []float32, sellOrder *model.Order) bool {
 	// レート情報が少ないときは判断不可
-	if len(rates) < a.LongTermSize {
-		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), a.LongTermSize)
+	if len(rates) < f.longTermSize {
+		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), f.longTermSize)
 		return false
 	}
 
@@ -347,9 +329,9 @@ func (a *RateAnalyzer) ShouldLossCut(rates []float32, sellOrder *model.Order) bo
 		rr = append(rr, float64(r))
 	}
 
-	sRates := talib.Ema(rr, a.ShortTermSize)
+	sRates := talib.Ema(rr, f.shortTermSize)
 	sRate := sRates[len(sRates)-1]
-	lRates := talib.Ema(rr, a.LongTermSize)
+	lRates := talib.Ema(rr, f.longTermSize)
 	lRate := lRates[len(lRates)-1]
 
 	// 上昇トレンドになりそうなら待機
@@ -363,12 +345,12 @@ func (a *RateAnalyzer) ShouldLossCut(rates []float32, sellOrder *model.Order) bo
 	}
 	// 下限を下回ったらロスカット
 	currentRate := rates[len(rates)-1]
-	lowerLimit := *sellOrder.Rate * lossCutLowerLimitPer
+	lowerLimit := *sellOrder.Rate * f.lossCutLowerLimitPer
 	if lowerLimit <= currentRate {
 		log.Printf(
 			"[check] order[rate:%.3f] * %.3f = lowerLimit:%.3f <= %s[rate:%.3f] => skip loss cut\n",
 			*sellOrder.Rate,
-			lossCutLowerLimitPer,
+			f.lossCutLowerLimitPer,
 			lowerLimit,
 			sellOrder.Pair.String(),
 			currentRate)
@@ -377,9 +359,58 @@ func (a *RateAnalyzer) ShouldLossCut(rates []float32, sellOrder *model.Order) bo
 	log.Printf(
 		"[check] order[rate:%.3f] * %.3f = lowerLimit:%.3f > %s[rate:%.3f] => should loss cut\n",
 		*sellOrder.Rate,
-		lossCutLowerLimitPer,
+		f.lossCutLowerLimitPer,
 		lowerLimit,
 		sellOrder.Pair.String(),
 		currentRate)
 	return true
+}
+
+// Wait 待機
+func (f *FollowUptrendStrategy) Wait(ctx context.Context) error {
+	log.Printf("waiting ... (%v)\n", f.interval)
+	ctx, cancel := context.WithTimeout(ctx, f.interval)
+	defer cancel()
+	select {
+	case <-ctx.Done():
+		if ctx.Err() != context.Canceled && ctx.Err() != context.DeadlineExceeded {
+			return ctx.Err()
+		}
+		return nil
+	}
+}
+
+func (f *FollowUptrendStrategy) loadConfig() error {
+	const configPath = "./configs/bot-follow-uptrend.toml"
+	var conf followUptrendConfig
+	if _, err := toml.DecodeFile(configPath, &conf); err != nil {
+		return err
+	}
+
+	f.interval = time.Duration(conf.IntervalSeconds) * time.Second
+	f.currencyPair = &model.CurrencyPair{
+		Key:        model.CurrencyType(conf.TargetCurrency),
+		Settlement: model.JPY,
+	}
+	f.fundsRatio = conf.FundsRatio
+	f.upRate = conf.UpRate
+	f.lossCutLowerLimitPer = conf.LossCutLowerLimitPer
+	f.contractCheckInterval = time.Duration(conf.ContractCheckIntervalSeconds) * time.Second
+	f.positionCountMax = conf.PositionCountMax
+	f.shortTermSize = conf.ShortTermSize
+	f.longTermSize = conf.LongTermSize
+
+	return nil
+}
+
+type followUptrendConfig struct {
+	IntervalSeconds              int     `toml:"interval_seconds"`
+	TargetCurrency               string  `toml:"target_currency"`
+	FundsRatio                   float32 `toml:"funds_ratio"`
+	UpRate                       float32 `toml:"up_rate"`
+	LossCutLowerLimitPer         float32 `toml:"loss_cut_lower_limit_per"`
+	ContractCheckIntervalSeconds int     `toml:"contract_check_interval_seconds"`
+	PositionCountMax             int     `toml:"position_count_max"`
+	ShortTermSize                int     `toml:"short_term_size"`
+	LongTermSize                 int     `toml:"long_term_size"`
 }

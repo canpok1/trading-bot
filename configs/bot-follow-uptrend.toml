@@ -1,20 +1,27 @@
 # 上昇トレンド追従
-strategy_name = "follow_uptrend"
-
-trade_interval_seconds = 60
-rate_history_size = 15
 target_currency = "mona"
-rate_log_interval_seconds = 60
+interval_seconds = 10
 
-# 取引所
-[exchange]
-access_key = "xxxxx"
-secret_key = "xxxxx"
+# 買い注文1回に使う日本円残高の割合
+funds_ratio = 0.3
 
-# DB設定
-[db]
-host = "db"
-port = 3306
-name = "trading-bot"
-user_name = "bot"
-password = "P@ssw0rd"
+# 売り注文時のレート上乗せ分(%)
+# 売り注文レート = 買い注文のレート × (1 + upRate)
+up_rate = 0.005
+
+# 売り注文をロスカットする下限の割合
+# 現レートが下限を下回るとロスカットする
+# 下限 = 注文レート * 下限の割合
+loss_cut_lower_limit_per = 0.990
+
+# 約定チェック間隔
+contract_check_interval_seconds = 2
+
+# 同時に持てるポジションの最大数
+position_count_max = 1
+
+# 短期を確認する際の確認対象レート数
+short_term_size = 5
+
+# 長期を確認する際の確認対象レート数
+long_term_size = 30

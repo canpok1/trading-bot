@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	ex "trading-bot/pkg/domain/exchange"
 	"trading-bot/pkg/domain/model"
 	repo "trading-bot/pkg/domain/repository"
@@ -13,6 +14,7 @@ import (
 type Strategy interface {
 	// Trade 取引
 	Trade(ctx context.Context) error
+	Wait(ctx context.Context) error
 }
 
 // StrategyType 戦略種別
@@ -34,13 +36,13 @@ type StrategyParams struct {
 }
 
 // MakeStrategy 戦略を生成
-func MakeStrategy(t StrategyType, facade *trade.Facade) Strategy {
+func MakeStrategy(t StrategyType, facade *trade.Facade) (Strategy, error) {
 	switch t {
 	case WatchOnly:
 		return strategy.NewWatchOnlyStrategy(facade)
 	case FollowUptrend:
 		return strategy.NewFollowUptrendStrategy(facade)
 	default:
-		return nil
+		return nil, fmt.Errorf("strategy name is unknown; name = %s", t)
 	}
 }

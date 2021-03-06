@@ -1,20 +1,3 @@
 # 定期取得のみ（売買しない）
-strategy_name = "watch_only"
-
-trade_interval_seconds = 10
-rate_history_size = 5
 target_currency = "mona"
-rate_log_interval_seconds = 60
-
-# 取引所
-[exchange]
-access_key = "xxxxx"
-secret_key = "xxxxx"
-
-# DB設定
-[db]
-host = "db"
-port = 3306
-name = "trading-bot"
-user_name = "bot"
-password = "P@ssw0rd"
+interval_seconds = 10

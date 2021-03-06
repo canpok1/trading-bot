@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"log"
 	"os"
 	"trading-bot/pkg/domain/model"
@@ -12,35 +11,34 @@ import (
 	"trading-bot/pkg/usecase/trade"
 
 	"github.com/BurntSushi/toml"
+	"github.com/kelseyhightower/envconfig"
 )
 
 func main() {
 	log.Println("===== START PROGRAM ====================")
 	defer log.Println("===== END PROGRAM ======================")
 
-	f := flag.String("f", "", "config file path")
-	flag.Parse()
-	log.Printf("config file: %s\n", *f)
-
-	var conf model.SimulatorConfig
-	if _, err := toml.DecodeFile(*f, &conf); err != nil {
+	var conf model.Config
+	if err := envconfig.Process("BOT", &conf); err != nil {
 		log.Fatal(err.Error())
 	}
 
-	historical, err := os.Open("data/simulator/historical_btc_jpy_20210303_005501_JST.csv")
+	var sConf model.SimulatorConfig
+	const configPath = "./configs/simulator.toml"
+	if _, err := toml.DecodeFile(configPath, &sConf); err != nil {
+		log.Fatal(err.Error())
+	}
+
+	historical, err := os.Open(sConf.RateHistoryFile)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	pair := model.CurrencyPair{
-		Key:        model.CurrencyType(conf.TargetCurrency),
-		Settlement: model.JPY,
-	}
-	exCli, err := memory.NewExchangeMock(&pair, historical, conf.Slippage)
+	exCli, err := memory.NewExchangeMock(historical, sConf.Slippage)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	rateRepo := memory.NewRateRepository(conf.RateHistorySize)
+	rateRepo := memory.NewRateRepository(sConf.RateHistorySize)
 	mysqlCli := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
 
 	if err := mysqlCli.TruncateAll(); err != nil {
@@ -48,13 +46,9 @@ func main() {
 		return
 	}
 
-	strategy := usecase.MakeStrategy(
-		usecase.StrategyType(conf.StrategyName),
+	strategy, err := usecase.MakeStrategy(
+		usecase.StrategyType(sConf.StrategyName),
 		trade.NewFacade(
-			&model.CurrencyPair{
-				Key:        model.CurrencyType(conf.TargetCurrency),
-				Settlement: model.JPY,
-			},
 			exCli,
 			rateRepo,
 			mysqlCli,
@@ -63,12 +57,12 @@ func main() {
 		),
 	)
 
-	if strategy == nil {
-		log.Fatalf("strategy name is unknown; name = %s", conf.StrategyName)
+	if err != nil {
+		log.Fatalf(err.Error())
 	}
 
-	log.Printf("strategy: %s\n", conf.StrategyName)
-	log.Printf("target: %s\n", conf.TargetCurrency)
+	log.Printf("strategy: %s\n", sConf.StrategyName)
+	log.Printf("rate: %s\n", sConf.RateHistoryFile)
 	log.Println("======================================")
 
 	ctx := context.Background()

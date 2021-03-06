@@ -3,11 +3,4 @@ strategy_name = "follow_uptrend"
 target_currency = "btc"
 rate_history_size = 15
 slippage = 0.001
-
-# DB設定
-[db]
-host = "simulation-db"
-port = 3306
-name = "trading-bot"
-user_name = "bot"
-password = "P@ssw0rd"
+rate_history_file = "./data/simulator/historical_mona_jpy_20210307_023045_JST.csv"

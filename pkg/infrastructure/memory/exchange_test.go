@@ -17,7 +17,7 @@ func TestExchangeMock_NotContract_5step(t *testing.T) {
 		"2021-02-23 19:27:02,200.0,199.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
-	mock, err := memory.NewExchangeMock(&model.BtcJpy, r, 0)
+	mock, err := memory.NewExchangeMock(r, 0)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -74,7 +74,7 @@ func TestExchangeMock_CloseBuyOrder_1step(t *testing.T) {
 		"2021-02-23 19:27:02,200.0,199.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
-	mock, err := memory.NewExchangeMock(&model.BtcJpy, r, 0)
+	mock, err := memory.NewExchangeMock(r, 0)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -128,7 +128,7 @@ func TestExchangeMock_CloseBuyOrder_2tep(t *testing.T) {
 		"2021-02-23 19:27:02,200.0,199.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
-	mock, err := memory.NewExchangeMock(&model.BtcJpy, r, 0)
+	mock, err := memory.NewExchangeMock(r, 0)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -183,7 +183,7 @@ func TestExchangeMock_CloseSellOrder_1step(t *testing.T) {
 		"2021-02-23 19:27:02,202.0,201.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
-	mock, err := memory.NewExchangeMock(&model.BtcJpy, r, 0)
+	mock, err := memory.NewExchangeMock(r, 0)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -237,7 +237,7 @@ func TestExchangeMock_CloseSellOrder_2step(t *testing.T) {
 		"2021-02-23 19:27:02,202.0,201.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
-	mock, err := memory.NewExchangeMock(&model.BtcJpy, r, 0)
+	mock, err := memory.NewExchangeMock(r, 0)
 	if err != nil {
 		t.Fatal(err.Error())
 	}

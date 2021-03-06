@@ -38,7 +38,6 @@ func NewRate(v []string) (*Rate, error) {
 
 // ExchangeMock 取引所モック
 type ExchangeMock struct {
-	pair       model.CurrencyPair
 	rateReader *csv.Reader
 	slippage   float32
 	rate       Rate
@@ -47,7 +46,7 @@ type ExchangeMock struct {
 }
 
 // NewExchangeMock 生成
-func NewExchangeMock(pair *model.CurrencyPair, r io.Reader, slippage float32) (*ExchangeMock, error) {
+func NewExchangeMock(r io.Reader, slippage float32) (*ExchangeMock, error) {
 	reader := csv.NewReader(r)
 
 	// ヘッダを読み飛ばす
@@ -66,7 +65,6 @@ func NewExchangeMock(pair *model.CurrencyPair, r io.Reader, slippage float32) (*
 	}
 
 	return &ExchangeMock{
-		pair:       *pair,
 		rateReader: reader,
 		slippage:   slippage,
 		rate:       *rate,
@@ -186,9 +184,9 @@ func (e *ExchangeMock) closeOrder(orderID uint64) {
 				ID:               uint64(len(e.contracts) + 1),
 				OrderID:          o.ID,
 				Rate:             e.rate.OrderBuyRate,
-				IncreaseCurrency: e.pair.Key,
+				IncreaseCurrency: o.Pair.Key,
 				IncreaseAmount:   o.Amount / e.rate.OrderBuyRate,
-				DecreaseCurrency: e.pair.Settlement,
+				DecreaseCurrency: o.Pair.Settlement,
 				DecreaseAmount:   -o.Amount,
 				FeeCurrency:      "",
 				Fee:              0,
@@ -203,9 +201,9 @@ func (e *ExchangeMock) closeOrder(orderID uint64) {
 			ID:               uint64(len(e.contracts) + 1),
 			OrderID:          o.ID,
 			Rate:             rate,
-			IncreaseCurrency: e.pair.Key,
+			IncreaseCurrency: o.Pair.Key,
 			IncreaseAmount:   o.Amount / rate,
-			DecreaseCurrency: e.pair.Settlement,
+			DecreaseCurrency: o.Pair.Settlement,
 			DecreaseAmount:   -o.Amount,
 			FeeCurrency:      "",
 			Fee:              0,
@@ -223,9 +221,9 @@ func (e *ExchangeMock) closeOrder(orderID uint64) {
 				ID:               uint64(len(e.contracts) + 1),
 				OrderID:          o.ID,
 				Rate:             e.rate.OrderSellRate,
-				IncreaseCurrency: e.pair.Settlement,
+				IncreaseCurrency: o.Pair.Settlement,
 				IncreaseAmount:   o.Amount * e.rate.OrderBuyRate,
-				DecreaseCurrency: e.pair.Key,
+				DecreaseCurrency: o.Pair.Key,
 				DecreaseAmount:   -o.Amount,
 				FeeCurrency:      "",
 				Fee:              0,
@@ -240,9 +238,9 @@ func (e *ExchangeMock) closeOrder(orderID uint64) {
 			ID:               uint64(len(e.contracts) + 1),
 			OrderID:          o.ID,
 			Rate:             rate,
-			IncreaseCurrency: e.pair.Settlement,
+			IncreaseCurrency: o.Pair.Settlement,
 			IncreaseAmount:   o.Amount * rate,
-			DecreaseCurrency: e.pair.Key,
+			DecreaseCurrency: o.Pair.Key,
 			DecreaseAmount:   -o.Amount,
 			FeeCurrency:      "",
 			Fee:              0,

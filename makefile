@@ -1,11 +1,14 @@
+include local.env
+export
+
 run:
-	go run cmd/trading-bot/main.go -f ./configs/bot-follow-uptrend.toml
+	go run cmd/trading-bot/main.go follow_uptrend
 
 run-sample:
-	go run cmd/trading-bot/main.go -f ./configs/bot-watch-only.toml
+	go run cmd/trading-bot/main.go watch_only
 
 test:
 	go test ./...
 
 simulation:
-	go run cmd/simulator/main.go -f ./configs/simulator.toml
+	go run cmd/simulator/main.go
