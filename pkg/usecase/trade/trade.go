@@ -168,6 +168,18 @@ func (f *Facade) GetSellRateHistory(pair *model.CurrencyPair) []float32 {
 	return f.rateRepo.GetRateHistory(&pair.Key, model.SellSide)
 }
 
+// GetSellRateHistory64 売レートの遷移を取得
+func (f *Facade) GetSellRateHistory64(pair *model.CurrencyPair) []float64 {
+	rates := f.rateRepo.GetRateHistory(&pair.Key, model.SellSide)
+
+	rr := []float64{}
+	for _, r := range rates {
+		rr = append(rr, float64(r))
+	}
+
+	return rr
+}
+
 // GetOpenPositions オープン状態のポジションを取得
 func (f *Facade) GetOpenPositions() ([]model.Position, error) {
 	return f.positionRepo.GetOpenPositions()

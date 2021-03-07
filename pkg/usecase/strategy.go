@@ -25,6 +25,8 @@ const (
 	WatchOnly StrategyType = "watch_only"
 	// FollowUptrend 上昇トレンド追従戦略
 	FollowUptrend StrategyType = "follow_uptrend"
+	// Scalping 短期の売買を繰り返す
+	Scalping StrategyType = "scalping"
 )
 
 // StrategyParams 戦略用パラメータ
@@ -42,6 +44,8 @@ func MakeStrategy(t StrategyType, facade *trade.Facade) (Strategy, error) {
 		return strategy.NewWatchOnlyStrategy(facade)
 	case FollowUptrend:
 		return strategy.NewFollowUptrendStrategy(facade)
+	case Scalping:
+		return strategy.NewScalpingStrategy(facade)
 	default:
 		return nil, fmt.Errorf("strategy name is unknown; name = %s", t)
 	}

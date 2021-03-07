@@ -1,14 +1,11 @@
-include local.env
-export
-
 run:
-	go run cmd/trading-bot/main.go follow_uptrend
+	scripts/run_bot.sh scalping
 
 run-sample:
-	go run cmd/trading-bot/main.go watch_only
+	scripts/run_bot.sh watch_only
 
 test:
 	go test ./...
 
 simulation:
-	go run cmd/simulator/main.go
+	scripts/run_simulator.sh

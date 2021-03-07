@@ -1,0 +1,13 @@
+# スキャルピング
+target_currency = "mona"
+interval_seconds = 10
+position_count_max = 1
+funds_ratio = 0.3
+
+short_term_size = 5
+long_term_size = 30
+loss_cut_lower_limit_per = 0.965
+fis_profit_upper_limit_per = 2.00
+bbands_nb_dev_up = 1.5
+bbands_nb_dev_down = 1.75
+
