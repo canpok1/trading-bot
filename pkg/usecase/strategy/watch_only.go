@@ -2,8 +2,8 @@ package strategy
 
 import (
 	"context"
-	"log"
 	"time"
+	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/usecase/trade"
 
@@ -15,10 +15,11 @@ type WatchOnlyStrategy struct {
 	facade         *trade.Facade
 	interval       time.Duration
 	targetCurrency *model.CurrencyPair
+	logger         domain.Logger
 }
 
 // NewWatchOnlyStrategy 戦略を生成
-func NewWatchOnlyStrategy(f *trade.Facade) (*WatchOnlyStrategy, error) {
+func NewWatchOnlyStrategy(f *trade.Facade, l domain.Logger) (*WatchOnlyStrategy, error) {
 	s := &WatchOnlyStrategy{
 		facade: f,
 	}
@@ -40,34 +41,36 @@ func (s *WatchOnlyStrategy) Trade(ctx context.Context) error {
 		return err
 	}
 
-	log.Printf("buy rate: %v\n", s.facade.GetBuyRateHistory(s.targetCurrency))
-	log.Printf("sell rate: %v\n", s.facade.GetSellRateHistory(s.targetCurrency))
+	s.logger.Debug("buy rate: %v\n", s.facade.GetBuyRateHistory(s.targetCurrency))
+	s.logger.Debug("sell rate: %v\n", s.facade.GetSellRateHistory(s.targetCurrency))
 
 	pp, err := s.facade.GetOpenPositions()
 	if err != nil {
 		return err
 	}
-	log.Printf("open position count: %d\n", len(pp))
+	s.logger.Debug("open position count: %d\n", len(pp))
 	for _, p := range pp {
-		log.Printf("open position id: %d\n", p.ID)
+		s.logger.Debug("open position id: %d\n", p.ID)
 		{
 			cc, err := s.facade.GetContracts(p.OpenerOrder.ID)
 			if err != nil {
 				return err
 			}
-			log.Printf("open order id: %d, contract count: %d\n", p.OpenerOrder.ID, len(cc))
+			s.logger.Debug("open order id: %d, contract count: %d\n", p.OpenerOrder.ID, len(cc))
 			for _, c := range cc {
-				log.Printf("contract: %#v\n", c)
+				s.logger.Debug("contract: %#v\n", c)
 			}
 		}
 		{
-			cc, err := s.facade.GetContracts(p.CloserOrder.ID)
-			if err != nil {
-				return err
-			}
-			log.Printf("close order id: %d, contract count: %d\n", p.CloserOrder.ID, len(cc))
-			for _, c := range cc {
-				log.Printf("contract: %#v\n", c)
+			if p.CloserOrder != nil {
+				cc, err := s.facade.GetContracts(p.CloserOrder.ID)
+				if err != nil {
+					return err
+				}
+				s.logger.Debug("close order id: %d, contract count: %d\n", p.CloserOrder.ID, len(cc))
+				for _, c := range cc {
+					s.logger.Debug("contract: %#v\n", c)
+				}
 			}
 		}
 	}
@@ -77,7 +80,7 @@ func (s *WatchOnlyStrategy) Trade(ctx context.Context) error {
 
 // Wait 待機
 func (s *WatchOnlyStrategy) Wait(ctx context.Context) error {
-	log.Printf("waiting ... (%v)\n", s.interval)
+	s.logger.Debug("waiting ... (%v)\n", s.interval)
 	ctx, cancel := context.WithTimeout(ctx, s.interval)
 	defer cancel()
 	select {

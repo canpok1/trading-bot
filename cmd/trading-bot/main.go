@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"time"
@@ -23,12 +22,14 @@ const (
 )
 
 func main() {
-	log.Println("===== START PROGRAM ====================")
-	defer log.Println("===== END PROGRAM ======================")
+	logger := memory.Logger{Level: memory.Debug}
+
+	logger.Info("===== START PROGRAM ====================")
+	defer logger.Info("===== END PROGRAM ======================")
 
 	var conf model.Config
 	if err := envconfig.Process("BOT", &conf); err != nil {
-		log.Fatal(err.Error())
+		logger.Error(err.Error())
 	}
 
 	exCli := &coincheck.Client{APIAccessKey: conf.Exchange.AccessKey, APISecretKey: conf.Exchange.SecretKey}
@@ -47,15 +48,16 @@ func main() {
 			contractRepo,
 			positionRepo,
 		),
+		&logger,
 	)
 
 	if err != nil {
-		log.Fatalf(err.Error())
+		logger.Error(err.Error())
 	}
 
-	log.Printf("strategy: %s\n", strategyType)
-	log.Printf("rate log interval: %dsec\n", conf.RateLogIntervalSeconds)
-	log.Println("======================================")
+	logger.Info("strategy: %s\n", strategyType)
+	logger.Info("rate log interval: %dsec\n", conf.RateLogIntervalSeconds)
+	logger.Info("======================================")
 
 	rootCtx, cancel := context.WithCancel(context.Background())
 	errGroup, ctx := errgroup.WithContext(rootCtx)
@@ -65,7 +67,7 @@ func main() {
 		signal.Notify(quit, os.Interrupt)
 		select {
 		case <-quit:
-			log.Println("terminating ...")
+			logger.Info("terminating ...")
 			cancel()
 		case <-ctx.Done():
 		}
@@ -80,11 +82,11 @@ func main() {
 		// レートの定期保存
 		jst := time.FixedZone("Asia/Tokyo", 9*60*60)
 		beginTime := time.Now().UTC().In(jst).Format("20060102_150405_JST")
-		loggers := []usecase.RateLogger{}
+		rLoggers := []usecase.RateLogger{}
 
 		for _, pair := range []model.CurrencyPair{model.BtcJpy, model.MonaJpy} {
 			path := fmt.Sprintf("./data/simulator/historical_%s_%s.csv", pair.String(), beginTime)
-			loggers = append(loggers, *usecase.NewRateLogger(exCli, &pair, path))
+			rLoggers = append(rLoggers, *usecase.NewRateLogger(exCli, &pair, path))
 		}
 
 		ticker := time.NewTicker(time.Duration(conf.RateLogIntervalSeconds) * time.Second)
@@ -92,8 +94,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				for _, logger := range loggers {
-					if err := logger.AppendLog(); err != nil {
+				for _, rLogger := range rLoggers {
+					if err := rLogger.AppendLog(); err != nil {
 						return fmt.Errorf("failed to logging rate, error: %w", err)
 					}
 				}
@@ -110,16 +112,16 @@ func main() {
 				return nil
 			default:
 				if err := strategy.Trade(ctx); err != nil {
-					log.Printf("error occured in trade, %v", err)
+					logger.Error("error occured in trade, %v", err)
 				}
 				if err := strategy.Wait(ctx); err != nil {
-					log.Printf("error occured in wait, %v", err)
+					logger.Error("error occured in wait, %v", err)
 				}
 			}
 		}
 	})
 
 	if err := errGroup.Wait(); err != nil {
-		log.Fatalf("error occured, %v", err)
+		logger.Error("error occured, %v", err)
 	}
 }

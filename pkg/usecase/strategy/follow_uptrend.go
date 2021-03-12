@@ -3,8 +3,8 @@ package strategy
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
+	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/usecase/trade"
 
@@ -16,6 +16,7 @@ const ()
 
 // FollowUptrendStrategy 上昇トレンド追従戦略
 type FollowUptrendStrategy struct {
+	logger       domain.Logger
 	facade       *trade.Facade
 	interval     time.Duration
 	currencyPair *model.CurrencyPair
@@ -30,8 +31,9 @@ type FollowUptrendStrategy struct {
 }
 
 // NewFollowUptrendStrategy 戦略を生成
-func NewFollowUptrendStrategy(facade *trade.Facade) (*FollowUptrendStrategy, error) {
+func NewFollowUptrendStrategy(facade *trade.Facade, logger domain.Logger) (*FollowUptrendStrategy, error) {
 	s := &FollowUptrendStrategy{
+		logger: logger,
 		facade: facade,
 	}
 
@@ -52,7 +54,7 @@ func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("===== rate[%s] buy: %.3f sell: %.3f =====\n", f.currencyPair, buyRate, sellRate)
+	f.logger.Debug("===== rate[%s] buy: %.3f sell: %.3f =====\n", f.currencyPair, buyRate, sellRate)
 
 	pp, err := f.facade.GetOpenPositions()
 	if err != nil {
@@ -60,12 +62,12 @@ func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
 	}
 
 	if len(pp) < f.positionCountMax {
-		log.Printf("[check] open poss [count: %d] < %d => check new order", len(pp), f.positionCountMax)
+		f.logger.Debug("[check] open poss [count: %d] < %d => check new order", len(pp), f.positionCountMax)
 		if err := f.checkNewOrder(); err != nil {
 			return err
 		}
 	} else {
-		log.Printf("[check] open poss [count: %d] >= %d => skip new order", len(pp), f.positionCountMax)
+		f.logger.Debug("[check] open poss [count: %d] >= %d => skip new order", len(pp), f.positionCountMax)
 	}
 
 	for _, p := range pp {
@@ -79,7 +81,7 @@ func (f *FollowUptrendStrategy) Trade(ctx context.Context) error {
 
 func (f *FollowUptrendStrategy) checkNewOrder() error {
 	if !f.IsBuySignal(f.facade.GetSellRateHistory(f.currencyPair)) {
-		log.Printf("[check] no buy signal => skip new order")
+		f.logger.Debug("[check] no buy signal => skip new order")
 		return nil
 	}
 
@@ -98,31 +100,31 @@ func (f *FollowUptrendStrategy) checkNewOrder() error {
 	}
 	amount := balance.Amount * f.fundsRatio
 
-	log.Printf("[trade] sending buy order ...")
+	f.logger.Debug("[trade] sending buy order ...")
 	pos1, err := f.facade.SendMarketBuyOrder(f.currencyPair, amount, nil)
 	if err != nil {
 		return err
 	}
-	log.Printf("[trade] completed to send buy order [%v]", pos1.OpenerOrder)
+	f.logger.Debug("[trade] completed to send buy order [%v]", pos1.OpenerOrder)
 
 	if _, err := f.waitContract(pos1.OpenerOrder.ID); err != nil {
 		return err
 	}
 
-	log.Printf("[trade] sending sell order ...")
+	f.logger.Debug("[trade] sending sell order ...")
 	//pos2, err := f.sendSellOrder(pos1)
 	pos2, err := f.sendSellOrder(pos1)
 	if err != nil {
 		return err
 	}
-	log.Printf("[trade] completed to send sell order [%v]", *pos2.CloserOrder)
+	f.logger.Debug("[trade] completed to send sell order [%v]", *pos2.CloserOrder)
 
 	return nil
 }
 
 func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 	if pos.OpenerOrder.Status == model.Open {
-		log.Printf("[check] position[id:%d]: OpenerOrder is OPEN => wait for contract new order[%s rate:%s amount:%.5f] ...",
+		f.logger.Debug("[check] position[id:%d]: OpenerOrder is OPEN => wait for contract new order[%s rate:%s amount:%.5f] ...",
 			pos.ID,
 			pos.OpenerOrder.Type,
 			toDisplayStr(pos.OpenerOrder.Rate, "--"),
@@ -130,12 +132,12 @@ func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 		return nil
 	}
 	if pos.CloserOrder == nil {
-		log.Printf("[check] position[id:%d]: Closer Order is nothing => sending sell order ...", pos.ID)
+		f.logger.Debug("[check] position[id:%d]: Closer Order is nothing => sending sell order ...", pos.ID)
 		pos2, err := f.sendSellOrder(pos)
 		if err != nil {
 			return err
 		}
-		log.Printf("[trade] completed to send order [%s rate:%s amount:%.5f]",
+		f.logger.Debug("[trade] completed to send order [%s rate:%s amount:%.5f]",
 			pos2.CloserOrder.Type,
 			toDisplayStr(pos2.CloserOrder.Rate, "--"),
 			pos2.CloserOrder.Amount,
@@ -144,7 +146,7 @@ func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 	}
 
 	if pos.CloserOrder.Status == model.Open {
-		log.Printf("[check] position[id:%d]: Closer Order is OPEN => check for resend order[%s rate:%s amount:%.5f] ...",
+		f.logger.Debug("[check] position[id:%d]: Closer Order is OPEN => check for resend order[%s rate:%s amount:%.5f] ...",
 			pos.ID,
 			pos.CloserOrder.Type,
 			toDisplayStr(pos.CloserOrder.Rate, "--"),
@@ -153,19 +155,19 @@ func (f *FollowUptrendStrategy) checkPosition(pos *model.Position) error {
 
 		shouldLossCut := f.ShouldLossCut(f.facade.GetSellRateHistory(f.currencyPair), pos.CloserOrder)
 		if shouldLossCut {
-			log.Printf("[trade] sending cancel order ...")
+			f.logger.Debug("[trade] sending cancel order ...")
 			pos2, err := f.facade.CancelSettleOrder(pos)
 			if err != nil {
 				return err
 			}
-			log.Printf("[trade] completed to send cancel order[order_id:%d]", pos.CloserOrder.ID)
+			f.logger.Debug("[trade] completed to send cancel order[order_id:%d]", pos.CloserOrder.ID)
 
-			log.Printf("[trade] sending loss cut sell order ...")
+			f.logger.Debug("[trade] sending loss cut sell order ...")
 			pos3, err := f.sendLossCutSellOrder(pos2)
 			if err != nil {
 				return err
 			}
-			log.Printf("[trade] completed to send loss cut sell order[%s rate:%s amount:%.5f]",
+			f.logger.Debug("[trade] completed to send loss cut sell order[%s rate:%s amount:%.5f]",
 				pos3.CloserOrder.Type,
 				toDisplayStr(pos.CloserOrder.Rate, "--"),
 				pos.CloserOrder.Amount)
@@ -200,10 +202,10 @@ func (f *FollowUptrendStrategy) isUptrend() bool {
 	}
 
 	if count > ((size - 1) / 2) {
-		log.Printf("[check] rise count: %d / %d => UP trend", count, size-1)
+		f.logger.Debug("[check] rise count: %d / %d => UP trend", count, size-1)
 		return true
 	}
-	log.Printf("[check] rise count: %d / %d => not UP trend", count, size-1)
+	f.logger.Debug("[check] rise count: %d / %d => not UP trend", count, size-1)
 	return false
 }
 
@@ -212,7 +214,7 @@ func (f *FollowUptrendStrategy) isUptrend() bool {
 // }
 
 func (f *FollowUptrendStrategy) waitContract(orderID uint64) ([]model.Contract, error) {
-	log.Printf("[trade] waiting for contract ...")
+	f.logger.Debug("[trade] waiting for contract ...")
 	for {
 		if err := f.facade.FetchAll(f.currencyPair); err != nil {
 			return nil, err
@@ -226,7 +228,7 @@ func (f *FollowUptrendStrategy) waitContract(orderID uint64) ([]model.Contract, 
 			break
 		}
 
-		log.Printf("[trade] not contracted, waiting for contract ...")
+		f.logger.Debug("[trade] not contracted, waiting for contract ...")
 		time.Sleep(f.contractCheckInterval)
 	}
 	contracts, err := f.facade.GetContracts(orderID)
@@ -234,7 +236,7 @@ func (f *FollowUptrendStrategy) waitContract(orderID uint64) ([]model.Contract, 
 		return nil, err
 	}
 
-	log.Printf("[trade] contracted!!! [%v]", contracts)
+	f.logger.Debug("[trade] contracted!!! [%v]", contracts)
 	return contracts, nil
 }
 
@@ -278,7 +280,7 @@ func toDisplayStr(v *float32, def string) string {
 func (f *FollowUptrendStrategy) IsBuySignal(rates []float32) bool {
 	// レート情報が少ないときは判断不可
 	if len(rates) < f.longTermSize {
-		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), f.longTermSize)
+		f.logger.Debug("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), f.longTermSize)
 		return false
 	}
 
@@ -294,7 +296,7 @@ func (f *FollowUptrendStrategy) IsBuySignal(rates []float32) bool {
 
 	// 下降トレンド（短期の移動平均＜長期の移動平均）
 	if sRate < lRate {
-		log.Printf("[check] SMA short:%.3f < long:%.3f => not UP trend", sRate, lRate)
+		f.logger.Debug("[check] SMA short:%.3f < long:%.3f => not UP trend", sRate, lRate)
 		return false
 	}
 
@@ -309,10 +311,10 @@ func (f *FollowUptrendStrategy) IsBuySignal(rates []float32) bool {
 		}
 	}
 	if count < (f.longTermSize / 2) {
-		log.Printf("[check] rise count: %d / %d => not UP trend", count, f.longTermSize)
+		f.logger.Debug("[check] rise count: %d / %d => not UP trend", count, f.longTermSize)
 		return false
 	}
-	log.Printf("[check] rise count: %d / %d => UP trend", count, f.longTermSize)
+	f.logger.Debug("[check] rise count: %d / %d => UP trend", count, f.longTermSize)
 	return true
 }
 
@@ -320,7 +322,7 @@ func (f *FollowUptrendStrategy) IsBuySignal(rates []float32) bool {
 func (f *FollowUptrendStrategy) ShouldLossCut(rates []float32, sellOrder *model.Order) bool {
 	// レート情報が少ないときは判断不可
 	if len(rates) < f.longTermSize {
-		log.Printf("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), f.longTermSize)
+		f.logger.Debug("[check] buy signal, rate count: count:%d < required:%d => not buy signal", len(rates), f.longTermSize)
 		return false
 	}
 
@@ -336,7 +338,7 @@ func (f *FollowUptrendStrategy) ShouldLossCut(rates []float32, sellOrder *model.
 
 	// 上昇トレンドになりそうなら待機
 	if sRate >= lRate {
-		log.Printf("[check] SMA short:%.3f >= long:%.3f => UP trend => skip loss cut", sRate, lRate)
+		f.logger.Debug("[check] SMA short:%.3f >= long:%.3f => UP trend => skip loss cut", sRate, lRate)
 		return false
 	}
 
@@ -347,7 +349,7 @@ func (f *FollowUptrendStrategy) ShouldLossCut(rates []float32, sellOrder *model.
 	currentRate := rates[len(rates)-1]
 	lowerLimit := *sellOrder.Rate * f.lossCutLowerLimitPer
 	if lowerLimit <= currentRate {
-		log.Printf(
+		f.logger.Debug(
 			"[check] order[rate:%.3f] * %.3f = lowerLimit:%.3f <= %s[rate:%.3f] => skip loss cut\n",
 			*sellOrder.Rate,
 			f.lossCutLowerLimitPer,
@@ -356,7 +358,7 @@ func (f *FollowUptrendStrategy) ShouldLossCut(rates []float32, sellOrder *model.
 			currentRate)
 		return false
 	}
-	log.Printf(
+	f.logger.Debug(
 		"[check] order[rate:%.3f] * %.3f = lowerLimit:%.3f > %s[rate:%.3f] => should loss cut\n",
 		*sellOrder.Rate,
 		f.lossCutLowerLimitPer,
@@ -368,7 +370,7 @@ func (f *FollowUptrendStrategy) ShouldLossCut(rates []float32, sellOrder *model.
 
 // Wait 待機
 func (f *FollowUptrendStrategy) Wait(ctx context.Context) error {
-	log.Printf("waiting ... (%v)\n", f.interval)
+	f.logger.Debug("waiting ... (%v)\n", f.interval)
 	ctx, cancel := context.WithTimeout(ctx, f.interval)
 	defer cancel()
 	select {

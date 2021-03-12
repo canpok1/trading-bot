@@ -3,9 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
-	ex "trading-bot/pkg/domain/exchange"
-	"trading-bot/pkg/domain/model"
-	repo "trading-bot/pkg/domain/repository"
+	"trading-bot/pkg/domain"
 	"trading-bot/pkg/usecase/strategy"
 	"trading-bot/pkg/usecase/trade"
 )
@@ -29,23 +27,15 @@ const (
 	Scalping StrategyType = "scalping"
 )
 
-// StrategyParams 戦略用パラメータ
-type StrategyParams struct {
-	ExCli     ex.Client
-	OrderRepo repo.OrderRepository
-	RateRepo  repo.RateRepository
-	Pair      *model.CurrencyPair
-}
-
 // MakeStrategy 戦略を生成
-func MakeStrategy(t StrategyType, facade *trade.Facade) (Strategy, error) {
+func MakeStrategy(t StrategyType, facade *trade.Facade, logger domain.Logger) (Strategy, error) {
 	switch t {
 	case WatchOnly:
-		return strategy.NewWatchOnlyStrategy(facade)
+		return strategy.NewWatchOnlyStrategy(facade, logger)
 	case FollowUptrend:
-		return strategy.NewFollowUptrendStrategy(facade)
+		return strategy.NewFollowUptrendStrategy(facade, logger)
 	case Scalping:
-		return strategy.NewScalpingStrategy(facade)
+		return strategy.NewScalpingStrategy(facade, logger)
 	default:
 		return nil, fmt.Errorf("strategy name is unknown; name = %s", t)
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/infrastructure/memory"
@@ -15,34 +14,36 @@ import (
 )
 
 func main() {
-	log.Println("===== START PROGRAM ====================")
-	defer log.Println("===== END PROGRAM ======================")
+	logger := memory.Logger{Level: memory.Debug}
+
+	logger.Info("===== START PROGRAM ====================")
+	defer logger.Info("===== END PROGRAM ======================")
 
 	var conf model.Config
 	if err := envconfig.Process("BOT", &conf); err != nil {
-		log.Fatal(err.Error())
+		logger.Error(err.Error())
 	}
 
 	var sConf model.SimulatorConfig
 	const configPath = "./configs/simulator.toml"
 	if _, err := toml.DecodeFile(configPath, &sConf); err != nil {
-		log.Fatal(err.Error())
+		logger.Error(err.Error())
 	}
 
 	historical, err := os.Open(sConf.RateHistoryFile)
 	if err != nil {
-		log.Fatal(err.Error())
+		logger.Error(err.Error())
 	}
 	exCli, err := memory.NewExchangeMock(historical, sConf.Slippage)
 	if err != nil {
-		log.Fatal(err.Error())
+		logger.Error(err.Error())
 	}
 
 	rateRepo := memory.NewRateRepository(sConf.RateHistorySize)
 	mysqlCli := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
 
 	if err := mysqlCli.TruncateAll(); err != nil {
-		log.Printf("failed to truncate all, %v", err)
+		logger.Info("failed to truncate all, %v", err)
 		return
 	}
 
@@ -55,20 +56,21 @@ func main() {
 			mysqlCli,
 			mysqlCli,
 		),
+		&logger,
 	)
 
 	if err != nil {
-		log.Fatalf(err.Error())
+		logger.Error(err.Error())
 	}
 
-	log.Printf("strategy: %s\n", sConf.StrategyName)
-	log.Printf("rate: %s\n", sConf.RateHistoryFile)
-	log.Println("======================================")
+	logger.Info("strategy: %s\n", sConf.StrategyName)
+	logger.Info("rate: %s\n", sConf.RateHistoryFile)
+	logger.Info("======================================")
 
 	ctx := context.Background()
 	for {
 		if err := strategy.Trade(ctx); err != nil {
-			log.Fatalf("error occured, %v\n", err)
+			logger.Error("error occured, %v\n", err)
 			break
 		}
 
