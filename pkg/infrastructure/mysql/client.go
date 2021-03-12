@@ -271,20 +271,29 @@ func (c *Client) GetOpenPositions() ([]model.Position, error) {
 
 // TruncateAll 全テーブルから全レコードを削除
 func (c *Client) TruncateAll() error {
-	if err := c.db.Exec("DELETE FROM profits;").Error; err != nil {
-		return err
+	qq := []string{
+		"SET FOREIGN_KEY_CHECKS = 0;",
+		"TRUNCATE TABLE profits;",
+		"TRUNCATE TABLE positions;",
+		"TRUNCATE TABLE contracts;",
+		"TRUNCATE TABLE orders;",
+		"INSERT INTO profits (amount) VALUES (0);",
+		"SET FOREIGN_KEY_CHECKS = 1;",
 	}
-	if err := c.db.Exec("DELETE FROM positions;").Error; err != nil {
-		return err
-	}
-	if err := c.db.Exec("DELETE FROM contracts;").Error; err != nil {
-		return err
-	}
-	if err := c.db.Exec("DELETE FROM orders;").Error; err != nil {
-		return err
-	}
-	if err := c.db.Exec("INSERT INTO profits (amount) VALUES (0);").Error; err != nil {
-		return err
+
+	for _, q := range qq {
+		if err := c.db.Exec(q).Error; err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// GetProfit 利益を取得
+func (c *Client) GetProfit() (float64, error) {
+	var profit Profit
+	if err := c.db.Order("id desc, aggregated_at desc").First(&profit).Error; err != nil {
+		return 0, err
+	}
+	return profit.Amount, nil
 }

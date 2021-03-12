@@ -106,3 +106,8 @@ type Position struct {
 	OpenerOrderID uint64
 	CloserOrderID *uint64
 }
+
+// Profit 利益
+type Profit struct {
+	Amount float64
+}

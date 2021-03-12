@@ -63,19 +63,21 @@ func main() {
 		logger.Error(err.Error())
 	}
 
+	simulator := usecase.Simulator{
+		Strategy:     strategy,
+		MysqlCli:     mysqlCli,
+		ExchangeMock: exCli,
+		Logger:       &logger,
+	}
+
 	logger.Info("strategy: %s\n", sConf.StrategyName)
 	logger.Info("rate: %s\n", sConf.RateHistoryFile)
 	logger.Info("======================================")
 
-	ctx := context.Background()
-	for {
-		if err := strategy.Trade(ctx); err != nil {
-			logger.Error("error occured, %v\n", err)
-			break
-		}
-
-		if !exCli.NextStep() {
-			break
-		}
+	profit, err := simulator.Run(context.Background())
+	if err != nil {
+		logger.Error("error occured, %v\n", err)
+	} else {
+		logger.Info("profit: %.3f", profit)
 	}
 }
