@@ -12,6 +12,7 @@ import (
 
 // WatchOnlyStrategy 定期取得のみ
 type WatchOnlyStrategy struct {
+	configPath     string
 	facade         *trade.Facade
 	interval       time.Duration
 	targetCurrency *model.CurrencyPair
@@ -19,9 +20,10 @@ type WatchOnlyStrategy struct {
 }
 
 // NewWatchOnlyStrategy 戦略を生成
-func NewWatchOnlyStrategy(f *trade.Facade, l domain.Logger) (*WatchOnlyStrategy, error) {
+func NewWatchOnlyStrategy(f *trade.Facade, l domain.Logger, configPath string) (*WatchOnlyStrategy, error) {
 	s := &WatchOnlyStrategy{
-		facade: f,
+		configPath: configPath,
+		facade:     f,
 	}
 
 	if err := s.loadConfig(); err != nil {
@@ -93,9 +95,8 @@ func (s *WatchOnlyStrategy) Wait(ctx context.Context) error {
 }
 
 func (s *WatchOnlyStrategy) loadConfig() error {
-	const configPath = "./configs/bot-watch-only.toml"
 	var conf watchOnlyConfig
-	if _, err := toml.DecodeFile(configPath, &conf); err != nil {
+	if _, err := toml.DecodeFile(s.configPath, &conf); err != nil {
 		return err
 	}
 

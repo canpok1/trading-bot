@@ -11,46 +11,7 @@ import (
 	"github.com/markcheno/go-talib"
 )
 
-// Scalping スキャルピング戦略
-type Scalping struct {
-	logger domain.Logger
-	facade *trade.Facade
-
-	config       *scalpingConfig
-	interval     time.Duration
-	currencyPair *model.CurrencyPair
-}
-
-// NewScalpingStrategy 戦略を生成
-func NewScalpingStrategy(facade *trade.Facade, logger domain.Logger) (*Scalping, error) {
-	s := &Scalping{
-		logger: logger,
-		facade: facade,
-	}
-
-	if err := s.loadConfig(); err != nil {
-		return nil, err
-	}
-
-	return s, nil
-}
-
-func (s *Scalping) loadConfig() error {
-	const configPath = "./configs/bot-scalping.toml"
-	var conf scalpingConfig
-	if _, err := toml.DecodeFile(configPath, &conf); err != nil {
-		return err
-	}
-	s.config = &conf
-	s.interval = time.Duration(conf.IntervalSeconds) * time.Second
-	s.currencyPair = &model.CurrencyPair{
-		Key:        model.CurrencyType(conf.TargetCurrency),
-		Settlement: model.JPY,
-	}
-	return nil
-}
-
-type scalpingConfig struct {
+type ScalpingConfig struct {
 	TargetCurrency         string  `toml:"target_currency"`
 	IntervalSeconds        int     `toml:"interval_seconds"`
 	PositionCountMax       int     `toml:"position_count_max"`
@@ -63,13 +24,47 @@ type scalpingConfig struct {
 	BBandsNBDevDown        float64 `toml:"bbands_nb_dev_down"`
 }
 
+func NewScalpingConfig(f string) (*ScalpingConfig, error) {
+	var conf ScalpingConfig
+	if _, err := toml.DecodeFile(f, &conf); err != nil {
+		return nil, err
+	}
+	return &conf, nil
+}
+
+func (c *ScalpingConfig) getCurrencyPair() *model.CurrencyPair {
+	return &model.CurrencyPair{
+		Key:        model.CurrencyType(c.TargetCurrency),
+		Settlement: model.JPY,
+	}
+}
+
+// Scalping スキャルピング戦略
+type Scalping struct {
+	logger domain.Logger
+	facade *trade.Facade
+
+	config *ScalpingConfig
+}
+
+// NewScalpingStrategy 戦略を生成
+func NewScalpingStrategy(facade *trade.Facade, logger domain.Logger, config *ScalpingConfig) (*Scalping, error) {
+	s := &Scalping{
+		logger: logger,
+		facade: facade,
+		config: config,
+	}
+
+	return s, nil
+}
+
 // Trade 取引
 func (s *Scalping) Trade(ctx context.Context) error {
-	if err := s.facade.FetchAll(s.currencyPair); err != nil {
+	if err := s.facade.FetchAll(s.config.getCurrencyPair()); err != nil {
 		return err
 	}
 
-	rates := s.facade.GetSellRateHistory64(s.currencyPair)
+	rates := s.facade.GetSellRateHistory64(s.config.getCurrencyPair())
 
 	pp, err := s.facade.GetOpenPositions()
 	if err != nil {
@@ -111,16 +106,18 @@ func (s *Scalping) Trade(ctx context.Context) error {
 
 // Wait 待機
 func (s *Scalping) Wait(ctx context.Context) error {
-	s.logger.Debug("waiting ... (%v)\n", s.interval)
-	ctx, cancel := context.WithTimeout(ctx, s.interval)
+	interval := time.Duration(s.config.IntervalSeconds) * time.Second
+
+	s.logger.Debug("waiting ... (%v)\n", interval)
+	ctx, cancel := context.WithTimeout(ctx, interval)
 	defer cancel()
-	select {
-	case <-ctx.Done():
-		if ctx.Err() != context.Canceled && ctx.Err() != context.DeadlineExceeded {
-			return ctx.Err()
-		}
-		return nil
+
+	<-ctx.Done()
+
+	if ctx.Err() != context.Canceled && ctx.Err() != context.DeadlineExceeded {
+		return ctx.Err()
 	}
+	return nil
 }
 
 func (s *Scalping) shouldBuy(rates []float64, posCount int) (bool, error) {
@@ -147,11 +144,11 @@ func (s *Scalping) shouldBuy(rates []float64, posCount int) (bool, error) {
 	lower := lowers[len(lowers)-1]
 	// bbandsDiff := middle - lower
 
-	// buyRate, err := s.facade.GetBuyRate(s.currencyPair)
+	// buyRate, err := s.facade.GetBuyRate(s.config.getCurrencyPair())
 	// if err != nil {
 	// 	return false, err
 	// }
-	// sellRate, err := s.facade.GetSellRate(s.currencyPair)
+	// sellRate, err := s.facade.GetSellRate(s.config.getCurrencyPair())
 	// if err != nil {
 	// 	return false, err
 	// }
@@ -178,7 +175,7 @@ func (s *Scalping) buy() error {
 	amount := balance.Amount * s.config.FundsRatio
 
 	s.logger.Debug("[buy] sending buy order ...")
-	pos, err := s.facade.SendMarketBuyOrder(s.currencyPair, amount, nil)
+	pos, err := s.facade.SendMarketBuyOrder(s.config.getCurrencyPair(), amount, nil)
 	if err != nil {
 		return err
 	}
@@ -331,7 +328,7 @@ func (s *Scalping) sell(p *model.Position) error {
 	}
 
 	s.logger.Debug("[pos:%d][sell] sending sell order ...", p.ID)
-	pos, err := s.facade.SendMarketSellOrder(s.currencyPair, amount, p)
+	pos, err := s.facade.SendMarketSellOrder(s.config.getCurrencyPair(), amount, p)
 	if err != nil {
 		return err
 	}

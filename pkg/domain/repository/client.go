@@ -14,7 +14,6 @@ type RateRepository interface {
 type OrderRepository interface {
 	GetOrder(uint64) (*model.Order, error)
 	GetOpenOrders() ([]model.Order, error)
-	UpdateCloserOrderID(id, closerOrderID uint64) (*model.Position, error)
 	UpdateStatus(orderID uint64, status model.OrderStatus) error
 }
 
@@ -30,4 +29,18 @@ type PositionRepository interface {
 	AddSettleOrder(uint64, *model.Order) (*model.Position, error)
 	CancelSettleOrder(uint64) (*model.Position, error)
 	GetOpenPositions() ([]model.Position, error)
+}
+
+type TradeRepository interface {
+	GetOrder(uint64) (*model.Order, error)
+	GetOpenOrders() ([]model.Order, error)
+	UpdateStatus(orderID uint64, status model.OrderStatus) error
+	GetContracts(orderID uint64) ([]model.Contract, error)
+	UpsertContracts([]model.Contract) error
+	AddNewOrder(*model.Order) (*model.Position, error)
+	AddSettleOrder(uint64, *model.Order) (*model.Position, error)
+	CancelSettleOrder(uint64) (*model.Position, error)
+	GetOpenPositions() ([]model.Position, error)
+	TruncateAll() error
+	GetProfit() (float64, error)
 }

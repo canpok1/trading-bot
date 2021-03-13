@@ -4,21 +4,21 @@ import (
 	"context"
 	"fmt"
 	"trading-bot/pkg/domain"
+	"trading-bot/pkg/domain/repository"
 	"trading-bot/pkg/infrastructure/memory"
-	"trading-bot/pkg/infrastructure/mysql"
 )
 
 // Simulator シミュレーター
 type Simulator struct {
 	Strategy     Strategy
-	MysqlCli     *mysql.Client
+	TradeRepo    repository.TradeRepository
 	ExchangeMock *memory.ExchangeMock
 	Logger       domain.Logger
 }
 
 // Run シミュレーション実施
 func (s *Simulator) Run(ctx context.Context) (float64, error) {
-	if err := s.MysqlCli.TruncateAll(); err != nil {
+	if err := s.TradeRepo.TruncateAll(); err != nil {
 		return 0, fmt.Errorf("failed to truncate all, %v", err)
 	}
 
@@ -32,5 +32,5 @@ func (s *Simulator) Run(ctx context.Context) (float64, error) {
 		}
 	}
 
-	return s.MysqlCli.GetProfit()
+	return s.TradeRepo.GetProfit()
 }

@@ -29,13 +29,18 @@ const (
 
 // MakeStrategy 戦略を生成
 func MakeStrategy(t StrategyType, facade *trade.Facade, logger domain.Logger) (Strategy, error) {
+	p := fmt.Sprintf("./configs/bot-%s.toml", t)
 	switch t {
 	case WatchOnly:
-		return strategy.NewWatchOnlyStrategy(facade, logger)
+		return strategy.NewWatchOnlyStrategy(facade, logger, p)
 	case FollowUptrend:
-		return strategy.NewFollowUptrendStrategy(facade, logger)
+		return strategy.NewFollowUptrendStrategy(facade, logger, p)
 	case Scalping:
-		return strategy.NewScalpingStrategy(facade, logger)
+		config, err := strategy.NewScalpingConfig(p)
+		if err != nil {
+			return nil, err
+		}
+		return strategy.NewScalpingStrategy(facade, logger, config)
 	default:
 		return nil, fmt.Errorf("strategy name is unknown; name = %s", t)
 	}

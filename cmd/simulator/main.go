@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/infrastructure/memory"
 	"trading-bot/pkg/infrastructure/mysql"
@@ -19,33 +20,46 @@ func main() {
 	logger.Info("===== START PROGRAM ====================")
 	defer logger.Info("===== END PROGRAM ======================")
 
+	simulator, err := setup(&logger, "./configs/simulator.toml")
+	if err != nil {
+		logger.Error("error occured, %v\n", err)
+	}
+
+	logger.Info("======================================")
+
+	profit, err := simulator.Run(context.Background())
+	if err != nil {
+		logger.Error("error occured, %v\n", err)
+	} else {
+		logger.Info("profit: %.3f", profit)
+	}
+}
+
+func setup(logger domain.Logger, configPath string) (*usecase.Simulator, error) {
 	var conf model.Config
 	if err := envconfig.Process("BOT", &conf); err != nil {
-		logger.Error(err.Error())
+		return nil, err
 	}
 
 	var sConf model.SimulatorConfig
-	const configPath = "./configs/simulator.toml"
 	if _, err := toml.DecodeFile(configPath, &sConf); err != nil {
-		logger.Error(err.Error())
+		return nil, err
 	}
+
+	logger.Info("strategy: %s\n", sConf.StrategyName)
+	logger.Info("rate: %s\n", sConf.RateHistoryFile)
 
 	historical, err := os.Open(sConf.RateHistoryFile)
 	if err != nil {
-		logger.Error(err.Error())
+		return nil, err
 	}
 	exCli, err := memory.NewExchangeMock(historical, sConf.Slippage)
 	if err != nil {
-		logger.Error(err.Error())
+		return nil, err
 	}
 
 	rateRepo := memory.NewRateRepository(sConf.RateHistorySize)
 	mysqlCli := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
-
-	if err := mysqlCli.TruncateAll(); err != nil {
-		logger.Info("failed to truncate all, %v", err)
-		return
-	}
 
 	strategy, err := usecase.MakeStrategy(
 		usecase.StrategyType(sConf.StrategyName),
@@ -56,28 +70,17 @@ func main() {
 			mysqlCli,
 			mysqlCli,
 		),
-		&logger,
+		logger,
 	)
 
 	if err != nil {
-		logger.Error(err.Error())
+		return nil, err
 	}
 
-	simulator := usecase.Simulator{
+	return &usecase.Simulator{
 		Strategy:     strategy,
-		MysqlCli:     mysqlCli,
+		TradeRepo:    mysqlCli,
 		ExchangeMock: exCli,
-		Logger:       &logger,
-	}
-
-	logger.Info("strategy: %s\n", sConf.StrategyName)
-	logger.Info("rate: %s\n", sConf.RateHistoryFile)
-	logger.Info("======================================")
-
-	profit, err := simulator.Run(context.Background())
-	if err != nil {
-		logger.Error("error occured, %v\n", err)
-	} else {
-		logger.Info("profit: %.3f", profit)
-	}
+		Logger:       logger,
+	}, nil
 }

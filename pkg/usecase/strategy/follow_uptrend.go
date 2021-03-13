@@ -16,6 +16,7 @@ const ()
 
 // FollowUptrendStrategy 上昇トレンド追従戦略
 type FollowUptrendStrategy struct {
+	configPath   string
 	logger       domain.Logger
 	facade       *trade.Facade
 	interval     time.Duration
@@ -31,10 +32,11 @@ type FollowUptrendStrategy struct {
 }
 
 // NewFollowUptrendStrategy 戦略を生成
-func NewFollowUptrendStrategy(facade *trade.Facade, logger domain.Logger) (*FollowUptrendStrategy, error) {
+func NewFollowUptrendStrategy(facade *trade.Facade, logger domain.Logger, configPath string) (*FollowUptrendStrategy, error) {
 	s := &FollowUptrendStrategy{
-		logger: logger,
-		facade: facade,
+		configPath: configPath,
+		logger:     logger,
+		facade:     facade,
 	}
 
 	if err := s.loadConfig(); err != nil {
@@ -383,9 +385,8 @@ func (f *FollowUptrendStrategy) Wait(ctx context.Context) error {
 }
 
 func (f *FollowUptrendStrategy) loadConfig() error {
-	const configPath = "./configs/bot-follow-uptrend.toml"
 	var conf followUptrendConfig
-	if _, err := toml.DecodeFile(configPath, &conf); err != nil {
+	if _, err := toml.DecodeFile(f.configPath, &conf); err != nil {
 		return err
 	}
 

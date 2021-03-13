@@ -9,3 +9,6 @@ test:
 
 simulation:
 	scripts/run_simulator.sh
+
+ga-simulation:
+	scripts/run_ga_simulator.sh
