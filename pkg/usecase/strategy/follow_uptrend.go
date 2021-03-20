@@ -375,13 +375,18 @@ func (f *FollowUptrendStrategy) Wait(ctx context.Context) error {
 	f.logger.Debug("waiting ... (%v)\n", f.interval)
 	ctx, cancel := context.WithTimeout(ctx, f.interval)
 	defer cancel()
-	select {
-	case <-ctx.Done():
-		if ctx.Err() != context.Canceled && ctx.Err() != context.DeadlineExceeded {
-			return ctx.Err()
-		}
-		return nil
+
+	<-ctx.Done()
+
+	if ctx.Err() != context.Canceled && ctx.Err() != context.DeadlineExceeded {
+		return ctx.Err()
 	}
+	return nil
+}
+
+// GetCurrency 対象通貨を取得
+func (f *FollowUptrendStrategy) GetCurrency() model.CurrencyType {
+	return f.currencyPair.Key
 }
 
 func (f *FollowUptrendStrategy) loadConfig() error {

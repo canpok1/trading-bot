@@ -24,6 +24,7 @@ func NewWatchOnlyStrategy(f *trade.Facade, l domain.Logger, configPath string) (
 	s := &WatchOnlyStrategy{
 		configPath: configPath,
 		facade:     f,
+		logger:     l,
 	}
 
 	if err := s.loadConfig(); err != nil {
@@ -92,6 +93,11 @@ func (s *WatchOnlyStrategy) Wait(ctx context.Context) error {
 		}
 		return nil
 	}
+}
+
+// GetCurrency 対象通貨を取得
+func (s *WatchOnlyStrategy) GetCurrency() model.CurrencyType {
+	return s.targetCurrency.Key
 }
 
 func (s *WatchOnlyStrategy) loadConfig() error {

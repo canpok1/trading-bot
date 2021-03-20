@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // OrderType 注文種別
@@ -79,6 +80,7 @@ type Order struct {
 	Rate         *float32
 	StopLossRate *float32
 	Status       OrderStatus
+	OrderedAt    time.Time
 }
 
 // String 文字列

@@ -1,6 +1,9 @@
 package mysql
 
-import "trading-bot/pkg/domain/model"
+import (
+	"time"
+	"trading-bot/pkg/domain/model"
+)
 
 // Order 注文情報
 type Order struct {
@@ -11,6 +14,7 @@ type Order struct {
 	Rate         *float32
 	StopLossRate *float32
 	Status       int
+	OrderedAt    time.Time
 }
 
 // NewOrder 生成
@@ -35,6 +39,7 @@ func NewOrder(org *model.Order, status model.OrderStatus) *Order {
 		Rate:         org.Rate,
 		StopLossRate: org.StopLossRate,
 		Status:       int(status),
+		OrderedAt:    org.OrderedAt,
 	}
 }
 
@@ -65,6 +70,7 @@ func (o *Order) ToDomainModel() (*model.Order, error) {
 		Rate:         o.Rate,
 		StopLossRate: o.StopLossRate,
 		Status:       model.OrderStatus(o.Status),
+		OrderedAt:    o.OrderedAt,
 	}, nil
 }
 
@@ -110,4 +116,10 @@ type Position struct {
 // Profit 利益
 type Profit struct {
 	Amount float64
+}
+
+type Rate struct {
+	Currency   string
+	Rate       float64
+	RecordedAt time.Time
 }

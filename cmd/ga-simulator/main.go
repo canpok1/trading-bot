@@ -20,17 +20,23 @@ import (
 )
 
 const (
+	geneSize      = 8
 	currencyType  = model.MONA
-	population    = 20
+	population    = 40
 	maxGeneration = 100
 	maxErrorCount = 5
-	selectionRate = 0.050
-	crossoverRate = 0.940
-	mutationRate  = 0.010
+	//maxConvergedCount = 3
+	selectionRate = 0.020
+	crossoverRate = 0.975
+	mutationRate  = 0.005
+
+	randomPopulationCount        = 4
+	randomPopulationBornInterval = 10
 )
 
 var (
-	goodGene = []int{360, 864, 572, 990, 888, 220}
+	// [197 440 268 886 994 391 176] => 10.254
+	goodGene = []int{197, 440, 268, 886, 994, 391, 176}
 )
 
 type Individual struct {
@@ -52,9 +58,11 @@ func (g *Gene) MakeConfig() *strategy.ScalpingConfig {
 		ShortTermSize:          v[0],
 		LongTermSize:           v[0] + v[1],
 		LossCutLowerLimitPer:   float64(v[2]) / 1000.0,
-		FixProfitUpperLimitPer: float64(v[3]) / 1000.0,
-		BBandsNBDevUp:          float64(v[4]) / 1000.0,
-		BBandsNBDevDown:        float64(v[5]) / 1000.0,
+		FixProfitUpperLimitPer: 1.0 + float64(v[3])/1000.0,
+		BBandsNBDevUp:          float64(v[4]) / 300.0,
+		BBandsNBDevDown:        float64(v[5]) / 300.0,
+		RsiLower:               float64(v[6]) / 10.0,
+		RsiUpper:               float64(v[6])/10.0 + float64(v[7])/10.0,
 	}
 }
 
@@ -71,14 +79,29 @@ func main() {
 	defer logger.Info("===== END GA SIMULATION ======================")
 
 	var individuals []*Individual
-	for gi := 1; gi <= maxGeneration; gi++ {
+	gi := 1
+	convergedCount := 0
+	for {
 		logger.Info("***** Generation %d *****", gi)
 
 		// 個体群を生成
 		if len(individuals) == 0 {
-			individuals = makeInitIndividuals(population)
+			individuals = makeInitIndividuals(population, goodGene)
+			//} else if convergedCount >= maxConvergedCount {
+			//	individuals = makeInitIndividuals(population, individuals[0].Gene)
 		} else {
 			nextIndividual := []*Individual{}
+
+			// 一番成績のいい個体は続投
+			nextIndividual = append(nextIndividual, individuals[0])
+
+			// 多様性維持のため定期的にランダムな個体を追加する
+			if gi%randomPopulationBornInterval == 0 {
+				for n := 0; n < randomPopulationCount; n++ {
+					nextIndividual = append(nextIndividual, makeRandomIndividual())
+				}
+			}
+
 			for {
 				nextIndividual = append(nextIndividual, makeNextIndividual(individuals))
 				if len(nextIndividual) == population {
@@ -89,8 +112,8 @@ func main() {
 		}
 
 		// 個体群の成績を評価
-		for _, individual := range individuals {
-			logger.Info("running simulation for %s ...", individual.String())
+		for i, individual := range individuals {
+			logger.Info("running simulation [%d/%d] %s ...", i+1, len(individuals), individual.String())
 			errCount := 0
 			for {
 				p, err := simulation(&logger, "./configs/simulator.toml", &individual.Gene)
@@ -115,16 +138,33 @@ func main() {
 		for _, individual := range individuals {
 			logger.Info("result %s => %.3f", individual.String(), *individual.Profit)
 		}
+
+		bestInd := individuals[0]
+		logger.Info("best profit: %.3f", *bestInd.Profit)
+		logger.Info("gene: %v", bestInd.Gene)
+		logger.Info("params: %#v", *bestInd.Gene.MakeConfig())
+
+		if isConverged(individuals) {
+			convergedCount++
+		} else {
+			convergedCount = 0
+		}
+
+		if gi >= maxGeneration {
+			logger.Info("***** max generation *****")
+			break
+		}
+		gi++
 	}
 
 	logger.Info("***** completed !!! *****")
-	bestInd := individuals[0]
-	logger.Info("best profit: %.3f", *bestInd.Profit)
-	logger.Info("params: %#v", *bestInd.Gene.MakeConfig())
 }
 
-func makeInitIndividuals(size int) []*Individual {
-	individuals := []*Individual{{Profit: nil, Gene: goodGene}}
+func makeInitIndividuals(size int, goodGene []int) []*Individual {
+	individuals := []*Individual{}
+	if len(goodGene) == geneSize {
+		individuals = append(individuals, &Individual{Profit: nil, Gene: goodGene})
+	}
 
 	for {
 		individuals = append(individuals, makeRandomIndividual())
@@ -136,7 +176,7 @@ func makeInitIndividuals(size int) []*Individual {
 }
 
 func makeNextIndividual(current []*Individual) *Individual {
-	v := rand.Intn(1000)
+	v := randValue()
 	if v <= int(selectionRate*1000) {
 		// 再生
 		return choose(current)
@@ -213,7 +253,7 @@ func mutate(org *Individual) *Individual {
 	newGene := []int{}
 	for i := 0; i < size; i++ {
 		if i == n {
-			newGene = append(newGene, rand.Intn(1000))
+			newGene = append(newGene, randValue())
 		} else {
 			newGene = append(newGene, org.Gene[i])
 		}
@@ -223,8 +263,8 @@ func mutate(org *Individual) *Individual {
 
 func makeRandomIndividual() *Individual {
 	gene := []int{}
-	for i := 0; i < 6; i++ {
-		gene = append(gene, rand.Intn(1000))
+	for i := 0; i < geneSize; i++ {
+		gene = append(gene, randValue())
 	}
 
 	return &Individual{
@@ -271,4 +311,22 @@ func simulation(logger domain.Logger, configPath string, gene *Gene) (float64, e
 	}
 
 	return simulator.Run(context.Background())
+}
+
+func isConverged(individuals []*Individual) bool {
+	isSame := true
+	for i := range individuals {
+		if i == 0 {
+			continue
+		}
+		if *individuals[i].Profit != *individuals[i-1].Profit {
+			isSame = false
+		}
+	}
+
+	return isSame
+}
+
+func randValue() int {
+	return rand.Intn(1000)
 }

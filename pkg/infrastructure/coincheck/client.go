@@ -15,6 +15,18 @@ type Client struct {
 	APISecretKey string
 }
 
+// GetStoreRate 販売所のレート取得
+func (c *Client) GetStoreRate(p *model.CurrencyPair) (*model.StoreRate, error) {
+	r, err := c.getRate(p)
+	if err != nil {
+		return nil, err
+	}
+	return &model.StoreRate{
+		Pair: *p,
+		Rate: r,
+	}, nil
+}
+
 // GetOrderRate 注文レート取得
 func (c *Client) GetOrderRate(p *model.CurrencyPair, s model.OrderSide) (*model.OrderRate, error) {
 	return c.getOrderRate(s, p)
@@ -78,6 +90,7 @@ func (c *Client) GetOpenOrders(pair *model.CurrencyPair) ([]model.Order, error) 
 			Rate:         toFloat32Nullable(o.Rate, nil),
 			StopLossRate: toFloat32Nullable(o.StopLossRate, nil),
 			Status:       model.Open,
+			OrderedAt:    o.CreatedAt,
 		})
 	}
 	return orders, nil
@@ -154,6 +167,7 @@ func (c *Client) PostOrder(o *model.NewOrder) (*model.Order, error) {
 		Rate:         toFloat32Nullable(res.Rate, nil),
 		StopLossRate: toFloat32Nullable(res.StopLossRate, nil),
 		Status:       model.Open,
+		OrderedAt:    res.CreatedAt,
 	}, nil
 }
 

@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
 	"trading-bot/pkg/domain/model"
 )
 
 // Rate レート
 type Rate struct {
 	Datetime      string
+	StoreRate     float32
 	OrderBuyRate  float32
 	OrderSellRate float32
 }
@@ -31,6 +33,7 @@ func NewRate(v []string) (*Rate, error) {
 
 	return &Rate{
 		Datetime:      v[0],
+		StoreRate:     float32(sellRate),
 		OrderBuyRate:  float32(buyRate),
 		OrderSellRate: float32(sellRate),
 	}, nil
@@ -40,7 +43,7 @@ func NewRate(v []string) (*Rate, error) {
 type ExchangeMock struct {
 	rateReader *csv.Reader
 	slippage   float32
-	rate       Rate
+	Rate       Rate
 	orders     []model.Order
 	contracts  []model.Contract
 }
@@ -67,9 +70,17 @@ func NewExchangeMock(r io.Reader, slippage float32) (*ExchangeMock, error) {
 	return &ExchangeMock{
 		rateReader: reader,
 		slippage:   slippage,
-		rate:       *rate,
+		Rate:       *rate,
 		orders:     []model.Order{},
 		contracts:  []model.Contract{},
+	}, nil
+}
+
+// GetStoreRate 販売所のレートを取得
+func (e *ExchangeMock) GetStoreRate(p *model.CurrencyPair) (*model.StoreRate, error) {
+	return &model.StoreRate{
+		Pair: *p,
+		Rate: e.Rate.StoreRate,
 	}, nil
 }
 
@@ -79,13 +90,13 @@ func (e *ExchangeMock) GetOrderRate(p *model.CurrencyPair, side model.OrderSide)
 		return &model.OrderRate{
 			Pair: *p,
 			Side: side,
-			Rate: e.rate.OrderBuyRate,
+			Rate: e.Rate.OrderBuyRate,
 		}, nil
 	}
 	return &model.OrderRate{
 		Pair: *p,
 		Side: side,
-		Rate: e.rate.OrderSellRate,
+		Rate: e.Rate.OrderSellRate,
 	}, nil
 }
 
@@ -122,6 +133,11 @@ func (e *ExchangeMock) PostOrder(o *model.NewOrder) (*model.Order, error) {
 		amount = *o.Amount
 	}
 
+	orderedAt, err := time.Parse(time.RFC3339, e.Rate.Datetime)
+	if err != nil {
+		return nil, err
+	}
+
 	order := model.Order{
 		ID:           uint64(len(e.orders) + 1),
 		Type:         o.Type,
@@ -130,6 +146,7 @@ func (e *ExchangeMock) PostOrder(o *model.NewOrder) (*model.Order, error) {
 		Rate:         o.Rate,
 		StopLossRate: o.StopLossRate,
 		Status:       model.Open,
+		OrderedAt:    orderedAt,
 	}
 	e.orders = append(e.orders, order)
 
@@ -156,7 +173,7 @@ func (e *ExchangeMock) NextStep() bool {
 	if err != nil {
 		return false
 	}
-	e.rate = *rate
+	e.Rate = *rate
 
 	for _, o := range e.orders {
 		e.closeOrder(o.ID)
@@ -174,18 +191,18 @@ func (e *ExchangeMock) closeOrder(orderID uint64) {
 	var contract *model.Contract
 	switch o.Type {
 	case model.Buy:
-		if o.Rate != nil && (*o.Rate) >= e.rate.OrderBuyRate {
+		if o.Rate != nil && (*o.Rate) >= e.Rate.OrderBuyRate {
 			o.Status = model.Closed
-		} else if o.StopLossRate != nil && (*o.StopLossRate) <= e.rate.OrderBuyRate {
+		} else if o.StopLossRate != nil && (*o.StopLossRate) <= e.Rate.OrderBuyRate {
 			o.Status = model.Closed
 		}
 		if o.Status == model.Closed {
 			contract = &model.Contract{
 				ID:               uint64(len(e.contracts) + 1),
 				OrderID:          o.ID,
-				Rate:             e.rate.OrderBuyRate,
+				Rate:             e.Rate.OrderBuyRate,
 				IncreaseCurrency: o.Pair.Key,
-				IncreaseAmount:   o.Amount / e.rate.OrderBuyRate,
+				IncreaseAmount:   o.Amount / e.Rate.OrderBuyRate,
 				DecreaseCurrency: o.Pair.Settlement,
 				DecreaseAmount:   -o.Amount,
 				FeeCurrency:      "",
@@ -196,7 +213,7 @@ func (e *ExchangeMock) closeOrder(orderID uint64) {
 		}
 	case model.MarketBuy:
 		o.Status = model.Closed
-		rate := e.rate.OrderBuyRate * (1.00 + e.slippage)
+		rate := e.Rate.OrderBuyRate * (1.00 + e.slippage)
 		contract = &model.Contract{
 			ID:               uint64(len(e.contracts) + 1),
 			OrderID:          o.ID,
@@ -211,18 +228,18 @@ func (e *ExchangeMock) closeOrder(orderID uint64) {
 			Side:             model.BuySide,
 		}
 	case model.Sell:
-		if o.Rate != nil && (*o.Rate) <= e.rate.OrderSellRate {
+		if o.Rate != nil && (*o.Rate) <= e.Rate.OrderSellRate {
 			o.Status = model.Closed
-		} else if o.StopLossRate != nil && (*o.StopLossRate) >= e.rate.OrderSellRate {
+		} else if o.StopLossRate != nil && (*o.StopLossRate) >= e.Rate.OrderSellRate {
 			o.Status = model.Closed
 		}
 		if o.Status == model.Closed {
 			contract = &model.Contract{
 				ID:               uint64(len(e.contracts) + 1),
 				OrderID:          o.ID,
-				Rate:             e.rate.OrderSellRate,
+				Rate:             e.Rate.OrderSellRate,
 				IncreaseCurrency: o.Pair.Settlement,
-				IncreaseAmount:   o.Amount * e.rate.OrderBuyRate,
+				IncreaseAmount:   o.Amount * e.Rate.OrderBuyRate,
 				DecreaseCurrency: o.Pair.Key,
 				DecreaseAmount:   -o.Amount,
 				FeeCurrency:      "",
@@ -233,7 +250,7 @@ func (e *ExchangeMock) closeOrder(orderID uint64) {
 		}
 	case model.MarketSell:
 		o.Status = model.Closed
-		rate := e.rate.OrderSellRate * (1.00 - e.slippage)
+		rate := e.Rate.OrderSellRate * (1.00 - e.slippage)
 		contract = &model.Contract{
 			ID:               uint64(len(e.contracts) + 1),
 			OrderID:          o.ID,

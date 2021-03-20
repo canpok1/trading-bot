@@ -34,9 +34,7 @@ func main() {
 
 	exCli := &coincheck.Client{APIAccessKey: conf.Exchange.AccessKey, APISecretKey: conf.Exchange.SecretKey}
 	rateRepo := memory.NewRateRepository(rateHistorySize)
-	orderRepo := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
-	contractRepo := orderRepo
-	positionRepo := orderRepo
+	mysqlCli := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
 
 	strategyType := usecase.StrategyType(os.Args[1])
 	strategy, err := usecase.MakeStrategy(
@@ -44,9 +42,9 @@ func main() {
 		trade.NewFacade(
 			exCli,
 			rateRepo,
-			orderRepo,
-			contractRepo,
-			positionRepo,
+			mysqlCli,
+			mysqlCli,
+			mysqlCli,
 		),
 		&logger,
 	)
@@ -80,13 +78,10 @@ func main() {
 		}
 
 		// レートの定期保存
-		jst := time.FixedZone("Asia/Tokyo", 9*60*60)
-		beginTime := time.Now().UTC().In(jst).Format("20060102_150405_JST")
 		rLoggers := []usecase.RateLogger{}
 
 		for _, pair := range []model.CurrencyPair{model.BtcJpy, model.MonaJpy} {
-			path := fmt.Sprintf("./data/simulator/historical_%s_%s.csv", pair.String(), beginTime)
-			rLoggers = append(rLoggers, *usecase.NewRateLogger(exCli, &pair, path))
+			rLoggers = append(rLoggers, *usecase.NewRateLogger(exCli, pair, mysqlCli))
 		}
 
 		ticker := time.NewTicker(time.Duration(conf.RateLogIntervalSeconds) * time.Second)

@@ -3,6 +3,7 @@ package mysql
 import (
 	"fmt"
 	"log"
+	"time"
 	"trading-bot/pkg/domain/model"
 
 	"gorm.io/driver/mysql"
@@ -280,6 +281,7 @@ func (c *Client) TruncateAll() error {
 		"TRUNCATE TABLE positions;",
 		"TRUNCATE TABLE contracts;",
 		"TRUNCATE TABLE orders;",
+		"TRUNCATE TABLE rates;",
 		"INSERT INTO profits (amount) VALUES (0);",
 		"SET FOREIGN_KEY_CHECKS = 1;",
 	}
@@ -299,4 +301,13 @@ func (c *Client) GetProfit() (float64, error) {
 		return 0, err
 	}
 	return profit.Amount, nil
+}
+
+func (c *Client) AddRates(currency model.CurrencyType, rate float64, recordedAt time.Time) error {
+	r := &Rate{
+		Currency:   string(currency),
+		Rate:       rate,
+		RecordedAt: recordedAt,
+	}
+	return c.db.Create(&r).Error
 }

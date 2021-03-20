@@ -1,6 +1,9 @@
 package memory
 
-import "trading-bot/pkg/domain/model"
+import (
+	"time"
+	"trading-bot/pkg/domain/model"
+)
 
 // RateRepository レート保存
 type RateRepository struct {
@@ -199,4 +202,8 @@ func (d *DummyRDS) TruncateAll() error {
 
 func (d *DummyRDS) GetProfit() (float64, error) {
 	return d.profit, nil
+}
+
+func (d *DummyRDS) AddRates(currency model.CurrencyType, rate float64, recordedAt time.Time) error {
+	return nil
 }

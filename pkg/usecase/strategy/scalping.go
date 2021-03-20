@@ -22,6 +22,8 @@ type ScalpingConfig struct {
 	FixProfitUpperLimitPer float64 `toml:"fis_profit_upper_limit_per"`
 	BBandsNBDevUp          float64 `toml:"bbands_nb_dev_up"`
 	BBandsNBDevDown        float64 `toml:"bbands_nb_dev_down"`
+	RsiLower               float64 `toml:"rsi_lower"`
+	RsiUpper               float64 `toml:"rsi_upper"`
 }
 
 func NewScalpingConfig(f string) (*ScalpingConfig, error) {
@@ -120,10 +122,15 @@ func (s *Scalping) Wait(ctx context.Context) error {
 	return nil
 }
 
+// GetCurrency 対象通貨を取得
+func (s *Scalping) GetCurrency() model.CurrencyType {
+	return s.config.getCurrencyPair().Key
+}
+
 func (s *Scalping) shouldBuy(rates []float64, posCount int) (bool, error) {
 	// レート情報が少ないときは判断不可
-	if len(rates) < s.config.LongTermSize {
-		s.logger.Debug("[buy] => skip buy (rate count:%d < required:%d)", len(rates), s.config.LongTermSize)
+	if len(rates) <= s.config.LongTermSize {
+		s.logger.Debug("[buy] => skip buy (rate count:%d <= required:%d)", len(rates), s.config.LongTermSize)
 		return false, nil
 	}
 
@@ -134,37 +141,29 @@ func (s *Scalping) shouldBuy(rates []float64, posCount int) (bool, error) {
 
 	rate := rates[len(rates)-1]
 
-	_, _, lowers := talib.BBands(
+	// 売られすぎていてるなら買う
+	rsis := talib.Rsi(rates, s.config.LongTermSize)
+	rsi := rsis[len(rsis)-1]
+	if rsi >= s.config.RsiLower {
+		s.logger.Debug("[buy] => skip buy (rsi: %.3f >= lower: %.3f)", rsi, s.config.RsiLower)
+		return false, nil
+	}
+
+	_, _, bbLowers := talib.BBands(
 		rates,
 		s.config.LongTermSize,
 		s.config.BBandsNBDevUp,
 		s.config.BBandsNBDevDown,
 		talib.SMA)
-	// middle := middles[len(middles)-1]
-	lower := lowers[len(lowers)-1]
-	// bbandsDiff := middle - lower
+	bbLower := bbLowers[len(bbLowers)-1]
 
-	// buyRate, err := s.facade.GetBuyRate(s.config.getCurrencyPair())
-	// if err != nil {
-	// 	return false, err
-	// }
-	// sellRate, err := s.facade.GetSellRate(s.config.getCurrencyPair())
-	// if err != nil {
-	// 	return false, err
-	// }
-	// rateDiff := float64(buyRate - sellRate)
-
-	// if rateDiff > bbandsDiff {
-	// 	s.logger.Debug("[buy] => skip buy (rate diff:%.3f > BBands diff:%.3f)", rateDiff, bbandsDiff)
-	// 	return false, err
-	// }
-
-	if rate < lower {
-		s.logger.Debug("[buy] => should buy (rate:%.3f < BBands lower:%.3f)", rate, lower)
-		return true, nil
+	if rate > bbLower {
+		s.logger.Debug("[buy] => skip buy (rate:%.3f > BBands lower:%.3f)", rate, bbLower)
+		return false, nil
 	}
-	s.logger.Debug("[buy] => skip buy (rate:%.3f >= BBands lower:%.3f)", rate, lower)
-	return false, nil
+
+	s.logger.Debug("[buy] => should buy (rsi: %.3f < %.3f, rate:%.3f <= BBands lower:%.3f)", rsi, s.config.RsiLower, rate, bbLower)
+	return true, nil
 }
 
 func (s *Scalping) buy() error {
@@ -192,33 +191,42 @@ func (s *Scalping) shouldSell(rates []float64, posCount int) (bool, error) {
 	}
 
 	if posCount == 0 {
-		s.logger.Debug("[sell] => skip buy (open pos nothing)")
+		s.logger.Debug("[sell] => skip sell (open pos nothing)")
 		return false, nil
 	}
 
 	rate := rates[len(rates)-1]
 
-	uppers, _, _ := talib.BBands(
+	// 買われすぎていたら売る
+	rsis := talib.Rsi(rates, s.config.LongTermSize)
+	rsi := rsis[len(rsis)-1]
+	if rsi <= s.config.RsiUpper {
+		s.logger.Debug("[sell] => skip sell (rsi: %.3f <= %.3f)", rsi, s.config.RsiUpper)
+		return false, nil
+	}
+
+	bbUppers, _, _ := talib.BBands(
 		rates,
 		s.config.LongTermSize,
 		s.config.BBandsNBDevUp,
 		s.config.BBandsNBDevDown,
 		talib.SMA)
-	upper := uppers[len(uppers)-1]
+	bbUpper := bbUppers[len(bbUppers)-1]
 
-	if rate >= upper {
-		s.logger.Debug("[sell] => should sell (rate:%.3f >= BBands upper:%.3f)", rate, upper)
-		return true, nil
+	if rate <= bbUpper {
+		s.logger.Debug("[sell] => should sell (rate:%.3f <= BBands upper:%.3f)", rate, bbUpper)
+		return false, nil
 	}
-	s.logger.Debug("[sell] => skip sell (rate:%.3f < BBands upper:%.3f)", rate, upper)
-	return false, nil
+
+	s.logger.Debug("[sell] => skip sell (rsi: %.3f > upper: %.3f, rate:%.3f > BBands upper:%.3f)", rsi, s.config.RsiUpper, rate, bbUpper)
+	return true, nil
 }
 
 // shouldFixProfit 利確すべきか判定
 func (s *Scalping) shouldFixProfit(rates []float64, pos *model.Position) (bool, error) {
 	// レート情報が少ないときは判断不可
-	if len(rates) < s.config.LongTermSize {
-		s.logger.Debug("[pos:%d][fixProfit] => skip fix profit (rate count:%d < required:%d)", pos.ID, len(rates), s.config.LongTermSize)
+	if len(rates) <= s.config.LongTermSize {
+		s.logger.Debug("[pos:%d][fixProfit] => skip fix profit (rate count:%d <= required:%d)", pos.ID, len(rates), s.config.LongTermSize)
 		return false, nil
 	}
 
@@ -263,8 +271,8 @@ func (s *Scalping) shouldFixProfit(rates []float64, pos *model.Position) (bool, 
 // ShouldLossCut ロスカットすべきか判定
 func (s *Scalping) shouldLossCut(rates []float64, pos *model.Position) (bool, error) {
 	// レート情報が少ないときは判断不可
-	if len(rates) < s.config.LongTermSize {
-		s.logger.Debug("[pos:%d][losscut] => skip loss cut (rate count:%d < required:%d)", pos.ID, len(rates), s.config.LongTermSize)
+	if len(rates) <= s.config.LongTermSize {
+		s.logger.Debug("[pos:%d][losscut] => skip loss cut (rate count:%d <= required:%d)", pos.ID, len(rates), s.config.LongTermSize)
 		return false, nil
 	}
 

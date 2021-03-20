@@ -1,6 +1,9 @@
 package repository
 
-import "trading-bot/pkg/domain/model"
+import (
+	"time"
+	"trading-bot/pkg/domain/model"
+)
 
 // RateRepository レート用リポジトリ
 type RateRepository interface {
@@ -43,4 +46,5 @@ type TradeRepository interface {
 	GetOpenPositions() ([]model.Position, error)
 	TruncateAll() error
 	GetProfit() (float64, error)
+	AddRates(model.CurrencyType, float64, time.Time) error
 }

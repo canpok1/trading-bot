@@ -1,56 +1,39 @@
 package usecase
 
 import (
-	"fmt"
-	"os"
 	"time"
 	"trading-bot/pkg/domain/exchange"
 	"trading-bot/pkg/domain/model"
+	"trading-bot/pkg/infrastructure/mysql"
 )
 
 // RateLogger レート保存
 type RateLogger struct {
-	exCli       exchange.Client
-	pair        *model.CurrencyPair
-	logFilePath string
+	exCli    exchange.Client
+	pair     model.CurrencyPair
+	mysqlCli *mysql.Client
 }
 
 // NewRateLogger 生成
-func NewRateLogger(exCli exchange.Client, pair *model.CurrencyPair, logFilePath string) *RateLogger {
+func NewRateLogger(exCli exchange.Client, pair model.CurrencyPair, mysqlCli *mysql.Client) *RateLogger {
 	return &RateLogger{
-		exCli:       exCli,
-		pair:        pair,
-		logFilePath: logFilePath,
+		exCli:    exCli,
+		pair:     pair,
+		mysqlCli: mysqlCli,
 	}
 }
 
 // AppendLog レート情報を追加
 func (l *RateLogger) AppendLog() error {
-	file, err := os.OpenFile(l.logFilePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stat, err := file.Stat()
-	if err != nil {
-		return err
-	}
-	if stat.Size() == 0 {
-		fmt.Fprintf(file, "日時,買いレート,売りレート\n")
-	}
-
-	buyOrder, err := l.exCli.GetOrderRate(l.pair, model.BuySide)
-	if err != nil {
-		return err
-	}
-	sellOrder, err := l.exCli.GetOrderRate(l.pair, model.SellSide)
+	r, err := l.exCli.GetStoreRate(&l.pair)
 	if err != nil {
 		return err
 	}
 
-	now := time.Now().Format(time.RFC3339)
-	fmt.Fprintf(file, "%s,%.5f,%.5f\n", now, buyOrder.Rate, sellOrder.Rate)
+	now := time.Now()
+	if err := l.mysqlCli.AddRates(l.pair.Key, float64(r.Rate), now); err != nil {
+		return err
+	}
 
 	return nil
 }

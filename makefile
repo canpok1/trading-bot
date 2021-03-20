@@ -1,8 +1,8 @@
 run:
 	scripts/run_bot.sh scalping
 
-run-sample:
-	scripts/run_bot.sh watch_only
+run-logger:
+	scripts/run_bot.sh watch-only
 
 test:
 	go test ./...
