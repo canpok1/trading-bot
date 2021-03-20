@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"time"
+	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/infrastructure/coincheck"
 	"trading-bot/pkg/infrastructure/memory"
@@ -27,35 +28,22 @@ func main() {
 	logger.Info("===== START PROGRAM ====================")
 	defer logger.Info("===== END PROGRAM ======================")
 
-	var conf model.Config
-	if err := envconfig.Process("BOT", &conf); err != nil {
+	var config model.Config
+	if err := envconfig.Process("BOT", &config); err != nil {
 		logger.Error(err.Error())
+		return
 	}
-
-	exCli := &coincheck.Client{APIAccessKey: conf.Exchange.AccessKey, APISecretKey: conf.Exchange.SecretKey}
-	rateRepo := memory.NewRateRepository(rateHistorySize)
-	mysqlCli := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
-
 	strategyType := usecase.StrategyType(os.Args[1])
-	strategy, err := usecase.MakeStrategy(
-		strategyType,
-		trade.NewFacade(
-			exCli,
-			rateRepo,
-			mysqlCli,
-			mysqlCli,
-			mysqlCli,
-		),
-		&logger,
-	)
-
-	if err != nil {
-		logger.Error(err.Error())
-	}
 
 	logger.Info("strategy: %s\n", strategyType)
-	logger.Info("rate log interval: %dsec\n", conf.RateLogIntervalSeconds)
+	logger.Info("rate log interval: %dsec\n", config.RateLogIntervalSeconds)
 	logger.Info("======================================")
+
+	bot, rLoggers, err := setup(&logger, &config, strategyType)
+	if err != nil {
+		logger.Error(err.Error())
+		return
+	}
 
 	rootCtx, cancel := context.WithCancel(context.Background())
 	errGroup, ctx := errgroup.WithContext(rootCtx)
@@ -73,18 +61,8 @@ func main() {
 	})
 
 	errGroup.Go(func() error {
-		if conf.RateLogIntervalSeconds == 0 {
-			return nil
-		}
-
 		// レートの定期保存
-		rLoggers := []usecase.RateLogger{}
-
-		for _, pair := range []model.CurrencyPair{model.BtcJpy, model.MonaJpy} {
-			rLoggers = append(rLoggers, *usecase.NewRateLogger(exCli, pair, mysqlCli))
-		}
-
-		ticker := time.NewTicker(time.Duration(conf.RateLogIntervalSeconds) * time.Second)
+		ticker := time.NewTicker(time.Duration(config.RateLogIntervalSeconds) * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
@@ -106,10 +84,10 @@ func main() {
 			case <-ctx.Done():
 				return nil
 			default:
-				if err := strategy.Trade(ctx); err != nil {
+				if err := bot.Trade(ctx); err != nil {
 					logger.Error("error occured in trade, %v", err)
 				}
-				if err := strategy.Wait(ctx); err != nil {
+				if err := bot.Wait(ctx); err != nil {
 					logger.Error("error occured in wait, %v", err)
 				}
 			}
@@ -119,4 +97,42 @@ func main() {
 	if err := errGroup.Wait(); err != nil {
 		logger.Error("error occured, %v", err)
 	}
+}
+
+func setup(logger domain.Logger, config *model.Config, strategyType usecase.StrategyType) (*usecase.Bot, []usecase.RateLogger, error) {
+	exCli := &coincheck.Client{APIAccessKey: config.Exchange.AccessKey, APISecretKey: config.Exchange.SecretKey}
+	rateRepo := memory.NewRateRepository(rateHistorySize)
+	mysqlCli := mysql.NewClient(config.DB.UserName, config.DB.Password, config.DB.Host, config.DB.Port, config.DB.Name)
+
+	facade := trade.NewFacade(
+		exCli,
+		rateRepo,
+		mysqlCli,
+		mysqlCli,
+		mysqlCli,
+	)
+
+	strategy, err := usecase.MakeStrategy(
+		strategyType,
+		facade,
+		logger,
+		model.CurrencyType(config.TargetCurrency),
+	)
+	if err != nil {
+		logger.Error(err.Error())
+	}
+
+	bot := usecase.NewBot(logger, facade, strategy, &usecase.BotConfig{
+		Currency:        model.CurrencyType(config.TargetCurrency),
+		IntervalSeconds: 0,
+	})
+
+	rLoggers := []usecase.RateLogger{}
+	if config.RateLogIntervalSeconds != 0 {
+		for _, pair := range []model.CurrencyPair{model.BtcJpy, model.MonaJpy} {
+			rLoggers = append(rLoggers, *usecase.NewRateLogger(exCli, pair, mysqlCli))
+		}
+	}
+
+	return bot, rLoggers, nil
 }

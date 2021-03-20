@@ -1,7 +1,0 @@
-# シミュレーター
-strategy_name = "follow-uptrend"
-#strategy_name = "scalping"
-rate_history_size =5000
-slippage = 0.001
-rate_history_file = "./data/simulator/historical_mona_jpy_20210315_010219_JST.csv"
-# rate_history_file = "./data/simulator/historical_mona_jpy.csv"

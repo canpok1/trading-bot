@@ -15,13 +15,11 @@ import (
 	"trading-bot/pkg/usecase/strategy"
 	"trading-bot/pkg/usecase/trade"
 
-	"github.com/BurntSushi/toml"
 	"github.com/kelseyhightower/envconfig"
 )
 
 const (
 	geneSize      = 8
-	currencyType  = model.MONA
 	population    = 40
 	maxGeneration = 100
 	maxErrorCount = 5
@@ -51,8 +49,6 @@ type Gene []int
 func (g *Gene) MakeConfig() *strategy.ScalpingConfig {
 	v := []int(*g)
 	return &strategy.ScalpingConfig{
-		TargetCurrency:         string(currencyType),
-		IntervalSeconds:        0,
 		PositionCountMax:       1,
 		FundsRatio:             0.3,
 		ShortTermSize:          v[0],
@@ -116,7 +112,7 @@ func main() {
 			logger.Info("running simulation [%d/%d] %s ...", i+1, len(individuals), individual.String())
 			errCount := 0
 			for {
-				p, err := simulation(&logger, "./configs/simulator.toml", &individual.Gene)
+				p, err := simulation(&logger, &individual.Gene)
 				if err != nil {
 					logger.Error("error occured; %v", err)
 					errCount++
@@ -273,14 +269,14 @@ func makeRandomIndividual() *Individual {
 	}
 }
 
-func simulation(logger domain.Logger, configPath string, gene *Gene) (float64, error) {
+func simulation(logger domain.Logger, gene *Gene) (float64, error) {
 	var conf model.Config
 	if err := envconfig.Process("BOT", &conf); err != nil {
 		return 0, err
 	}
 
 	var sConf model.SimulatorConfig
-	if _, err := toml.DecodeFile(configPath, &sConf); err != nil {
+	if err := envconfig.Process("BOT", &sConf); err != nil {
 		return 0, err
 	}
 
@@ -298,13 +294,19 @@ func simulation(logger domain.Logger, configPath string, gene *Gene) (float64, e
 
 	facade := trade.NewFacade(exCli, rateRepo, rdsCli, rdsCli, rdsCli)
 
-	strategy, err := strategy.NewScalpingStrategy(facade, logger, gene.MakeConfig())
+	currency := model.CurrencyType(conf.TargetCurrency)
+	strategy, err := strategy.NewScalpingStrategy(facade, logger, gene.MakeConfig(), currency)
 	if err != nil {
 		return 0, err
 	}
 
+	bot := usecase.NewBot(logger, facade, strategy, &usecase.BotConfig{
+		Currency:        currency,
+		IntervalSeconds: 0,
+	})
+
 	simulator := usecase.Simulator{
-		Strategy:     strategy,
+		Bot:          bot,
 		TradeRepo:    rdsCli,
 		ExchangeMock: exCli,
 		Logger:       logger,

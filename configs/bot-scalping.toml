@@ -1,7 +1,4 @@
 # スキャルピング
-target_currency = "mona"
-interval_seconds = 10
-position_count_max = 1
 funds_ratio = 0.3
 
 short_term_size = 32

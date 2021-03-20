@@ -11,7 +11,7 @@ import (
 
 // Simulator シミュレーター
 type Simulator struct {
-	Strategy     Strategy
+	Bot          *Bot
 	TradeRepo    repository.TradeRepository
 	ExchangeMock *memory.ExchangeMock
 	Logger       domain.Logger
@@ -24,7 +24,7 @@ func (s *Simulator) Run(ctx context.Context) (float64, error) {
 	}
 
 	for {
-		if err := s.Strategy.Trade(ctx); err != nil {
+		if err := s.Bot.Trade(ctx); err != nil {
 			return 0, err
 		}
 
@@ -33,7 +33,7 @@ func (s *Simulator) Run(ctx context.Context) (float64, error) {
 		if err != nil {
 			return 0, err
 		}
-		if err := s.TradeRepo.AddRates(s.Strategy.GetCurrency(), r, t); err != nil {
+		if err := s.TradeRepo.AddRates(s.Bot.Config.Currency, r, t); err != nil {
 			return 0, err
 		}
 		if !s.ExchangeMock.NextStep() {

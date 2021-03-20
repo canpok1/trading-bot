@@ -1,8 +1,6 @@
 package strategy
 
 import (
-	"context"
-	"time"
 	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/usecase/trade"
@@ -12,8 +10,6 @@ import (
 )
 
 type ScalpingConfig struct {
-	TargetCurrency         string  `toml:"target_currency"`
-	IntervalSeconds        int     `toml:"interval_seconds"`
 	PositionCountMax       int     `toml:"position_count_max"`
 	FundsRatio             float32 `toml:"funds_ratio"`
 	ShortTermSize          int     `toml:"short_term_size"`
@@ -34,46 +30,33 @@ func NewScalpingConfig(f string) (*ScalpingConfig, error) {
 	return &conf, nil
 }
 
-func (c *ScalpingConfig) getCurrencyPair() *model.CurrencyPair {
-	return &model.CurrencyPair{
-		Key:        model.CurrencyType(c.TargetCurrency),
-		Settlement: model.JPY,
-	}
-}
-
 // Scalping スキャルピング戦略
 type Scalping struct {
 	logger domain.Logger
 	facade *trade.Facade
 
 	config *ScalpingConfig
+
+	pair *model.CurrencyPair
 }
 
 // NewScalpingStrategy 戦略を生成
-func NewScalpingStrategy(facade *trade.Facade, logger domain.Logger, config *ScalpingConfig) (*Scalping, error) {
+func NewScalpingStrategy(facade *trade.Facade, logger domain.Logger, config *ScalpingConfig, currency model.CurrencyType) (*Scalping, error) {
 	s := &Scalping{
 		logger: logger,
 		facade: facade,
 		config: config,
+		pair: &model.CurrencyPair{
+			Key:        currency,
+			Settlement: model.JPY,
+		},
 	}
 
 	return s, nil
 }
 
-// Trade 取引
-func (s *Scalping) Trade(ctx context.Context) error {
-	if err := s.facade.FetchAll(s.config.getCurrencyPair()); err != nil {
-		return err
-	}
-
-	rates := s.facade.GetSellRateHistory64(s.config.getCurrencyPair())
-
-	pp, err := s.facade.GetOpenPositions()
-	if err != nil {
-		return err
-	}
-
-	shouldBuy, err := s.shouldBuy(rates, len(pp))
+func (s *Scalping) Buy(rates []float64, positions []model.Position) error {
+	shouldBuy, err := s.shouldBuy(rates, len(positions))
 	if err != nil {
 		return err
 	}
@@ -82,49 +65,7 @@ func (s *Scalping) Trade(ctx context.Context) error {
 			return err
 		}
 	}
-
-	shouldSell, err := s.shouldSell(rates, len(pp))
-	if err != nil {
-		return err
-	}
-	for _, p := range pp {
-		shouldFixProfit, err := s.shouldFixProfit(rates, &p)
-		if err != nil {
-			return err
-		}
-		shouldLossCut, err := s.shouldLossCut(rates, &p)
-		if err != nil {
-			return err
-		}
-		if shouldSell || shouldFixProfit || shouldLossCut {
-			if err := s.sell(&p); err != nil {
-				return err
-			}
-		}
-	}
-
 	return nil
-}
-
-// Wait 待機
-func (s *Scalping) Wait(ctx context.Context) error {
-	interval := time.Duration(s.config.IntervalSeconds) * time.Second
-
-	s.logger.Debug("waiting ... (%v)\n", interval)
-	ctx, cancel := context.WithTimeout(ctx, interval)
-	defer cancel()
-
-	<-ctx.Done()
-
-	if ctx.Err() != context.Canceled && ctx.Err() != context.DeadlineExceeded {
-		return ctx.Err()
-	}
-	return nil
-}
-
-// GetCurrency 対象通貨を取得
-func (s *Scalping) GetCurrency() model.CurrencyType {
-	return s.config.getCurrencyPair().Key
 }
 
 func (s *Scalping) shouldBuy(rates []float64, posCount int) (bool, error) {
@@ -174,11 +115,35 @@ func (s *Scalping) buy() error {
 	amount := balance.Amount * s.config.FundsRatio
 
 	s.logger.Debug("[buy] sending buy order ...")
-	pos, err := s.facade.SendMarketBuyOrder(s.config.getCurrencyPair(), amount, nil)
+	pos, err := s.facade.SendMarketBuyOrder(s.pair, amount, nil)
 	if err != nil {
 		return err
 	}
 	s.logger.Debug("[buy] completed to send buy order [%v]", pos.OpenerOrder)
+
+	return nil
+}
+
+func (s *Scalping) Sell(rates []float64, positions []model.Position) error {
+	shouldSell, err := s.shouldSell(rates, len(positions))
+	if err != nil {
+		return err
+	}
+	for _, p := range positions {
+		shouldFixProfit, err := s.shouldFixProfit(rates, &p)
+		if err != nil {
+			return err
+		}
+		shouldLossCut, err := s.shouldLossCut(rates, &p)
+		if err != nil {
+			return err
+		}
+		if shouldSell || shouldFixProfit || shouldLossCut {
+			if err := s.sell(&p); err != nil {
+				return err
+			}
+		}
+	}
 
 	return nil
 }
@@ -336,7 +301,7 @@ func (s *Scalping) sell(p *model.Position) error {
 	}
 
 	s.logger.Debug("[pos:%d][sell] sending sell order ...", p.ID)
-	pos, err := s.facade.SendMarketSellOrder(s.config.getCurrencyPair(), amount, p)
+	pos, err := s.facade.SendMarketSellOrder(s.pair, amount, p)
 	if err != nil {
 		return err
 	}

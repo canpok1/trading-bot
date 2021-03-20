@@ -10,7 +10,6 @@ import (
 	"trading-bot/pkg/usecase"
 	"trading-bot/pkg/usecase/trade"
 
-	"github.com/BurntSushi/toml"
 	"github.com/kelseyhightower/envconfig"
 )
 
@@ -23,6 +22,7 @@ func main() {
 	simulator, err := setup(&logger, "./configs/simulator.toml")
 	if err != nil {
 		logger.Error("error occured, %v\n", err)
+		return
 	}
 
 	logger.Info("======================================")
@@ -30,6 +30,7 @@ func main() {
 	profit, err := simulator.Run(context.Background())
 	if err != nil {
 		logger.Error("error occured, %v\n", err)
+		return
 	} else {
 		logger.Info("profit: %.3f", profit)
 	}
@@ -42,7 +43,7 @@ func setup(logger domain.Logger, configPath string) (*usecase.Simulator, error) 
 	}
 
 	var sConf model.SimulatorConfig
-	if _, err := toml.DecodeFile(configPath, &sConf); err != nil {
+	if err := envconfig.Process("BOT", &sConf); err != nil {
 		return nil, err
 	}
 
@@ -61,24 +62,32 @@ func setup(logger domain.Logger, configPath string) (*usecase.Simulator, error) 
 	rateRepo := memory.NewRateRepository(sConf.RateHistorySize)
 	mysqlCli := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
 
+	facade := trade.NewFacade(
+		exCli,
+		rateRepo,
+		mysqlCli,
+		mysqlCli,
+		mysqlCli,
+	)
 	strategy, err := usecase.MakeStrategy(
 		usecase.StrategyType(sConf.StrategyName),
-		trade.NewFacade(
-			exCli,
-			rateRepo,
-			mysqlCli,
-			mysqlCli,
-			mysqlCli,
-		),
+		facade,
 		logger,
+		model.CurrencyType(conf.TargetCurrency),
 	)
 
 	if err != nil {
 		return nil, err
 	}
 
+	bot := usecase.NewBot(logger, facade, strategy, &usecase.BotConfig{
+		Currency:         model.CurrencyType(conf.TargetCurrency),
+		IntervalSeconds:  0,
+		PositionCountMax: conf.PositionCountMax,
+	})
+
 	return &usecase.Simulator{
-		Strategy:     strategy,
+		Bot:          bot,
 		TradeRepo:    mysqlCli,
 		ExchangeMock: exCli,
 		Logger:       logger,

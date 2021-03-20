@@ -2,7 +2,9 @@ package model
 
 // Config ボット用設定
 type Config struct {
+	TargetCurrency         string   `required:"true" split_words:"true"`
 	RateLogIntervalSeconds int      `required:"true" split_words:"true"`
+	PositionCountMax       int      `required:"true" split_words:"true"`
 	Exchange               Exchange `required:"true"`
 	DB                     DB       `required:"true"`
 }
@@ -24,8 +26,8 @@ type DB struct {
 
 // SimulatorConfig シミュレーター用設定
 type SimulatorConfig struct {
-	StrategyName    string  `toml:"strategy_name"`
-	RateHistorySize int     `toml:"rate_history_size"`
-	Slippage        float32 `toml:"slippage"`
-	RateHistoryFile string  `toml:"rate_history_file"`
+	StrategyName    string  `required:"true" split_words:"true"`
+	RateHistorySize int     `required:"true" split_words:"true"`
+	Slippage        float32 `required:"true" split_words:"true"`
+	RateHistoryFile string  `required:"true" split_words:"true"`
 }

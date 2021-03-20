@@ -2,6 +2,8 @@
 cd $(dirname $0)/../
 
 export BOT_RATE_LOG_INTERVAL_SECONDS=10
+export BOT_TARGET_CURRENCY=mona
+export BOT_POSITION_COUNT_MAX=1
 
 # 取引所
 export BOT_EXCHANGE_ACCESS_KEY=xxxx
