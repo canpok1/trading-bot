@@ -7,10 +7,9 @@ import (
 
 // RateRepository レート用リポジトリ
 type RateRepository interface {
-	AddOrderRate(*model.OrderRate) error
-	GetCurrentRate(*model.CurrencyType, model.OrderSide) *float32
-	GetRateHistory(*model.CurrencyType, model.OrderSide) []float32
-	GetHistorySizeMax() int
+	AddRates(*model.CurrencyPair, float64, time.Time) error
+	GetRate(*model.CurrencyPair) (float64, error)
+	GetRates(*model.CurrencyPair, *time.Duration) ([]float64, error)
 }
 
 // OrderRepository 注文用リポジトリ
@@ -46,5 +45,7 @@ type TradeRepository interface {
 	GetOpenPositions() ([]model.Position, error)
 	TruncateAll() error
 	GetProfit() (float64, error)
-	AddRates(model.CurrencyType, float64, time.Time) error
+	AddRates(*model.CurrencyPair, float64, time.Time) error
+	GetRate(*model.CurrencyPair) (float64, error)
+	GetRates(*model.CurrencyPair, *time.Duration) ([]float64, error)
 }

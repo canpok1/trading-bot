@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	rateHistorySize = 5000
+	rateDuration = 10 * time.Minute
 )
 
 func main() {
@@ -39,7 +39,7 @@ func main() {
 	logger.Info("rate log interval: %dsec\n", config.RateLogIntervalSeconds)
 	logger.Info("======================================")
 
-	bot, rLoggers, err := setup(&logger, &config, strategyType)
+	bot, fetchers, err := setup(&logger, &config, strategyType)
 	if err != nil {
 		logger.Error(err.Error())
 		return
@@ -67,9 +67,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				for _, rLogger := range rLoggers {
-					if err := rLogger.AppendLog(); err != nil {
-						return fmt.Errorf("failed to logging rate, error: %w", err)
+				for _, f := range fetchers {
+					if err := f.Fetch(); err != nil {
+						return fmt.Errorf("failed to fetch, error: %w", err)
 					}
 				}
 			case <-ctx.Done():
@@ -99,40 +99,41 @@ func main() {
 	}
 }
 
-func setup(logger domain.Logger, config *model.Config, strategyType usecase.StrategyType) (*usecase.Bot, []usecase.RateLogger, error) {
+func setup(logger domain.Logger, config *model.Config, strategyType usecase.StrategyType) (*usecase.Bot, []usecase.Fetcher, error) {
 	exCli := &coincheck.Client{APIAccessKey: config.Exchange.AccessKey, APISecretKey: config.Exchange.SecretKey}
-	rateRepo := memory.NewRateRepository(rateHistorySize)
 	mysqlCli := mysql.NewClient(config.DB.UserName, config.DB.Password, config.DB.Host, config.DB.Port, config.DB.Name)
 
+	d := rateDuration
 	facade := trade.NewFacade(
 		exCli,
-		rateRepo,
 		mysqlCli,
 		mysqlCli,
 		mysqlCli,
+		mysqlCli,
+		&d,
 	)
 
 	strategy, err := usecase.MakeStrategy(
 		strategyType,
 		facade,
 		logger,
-		model.CurrencyType(config.TargetCurrency),
 	)
 	if err != nil {
-		logger.Error(err.Error())
+		return nil, nil, err
 	}
 
 	bot := usecase.NewBot(logger, facade, strategy, &usecase.BotConfig{
-		Currency:        model.CurrencyType(config.TargetCurrency),
-		IntervalSeconds: 0,
+		Currency:         model.CurrencyType(config.TargetCurrency),
+		IntervalSeconds:  config.RateLogIntervalSeconds,
+		PositionCountMax: config.PositionCountMax,
 	})
 
-	rLoggers := []usecase.RateLogger{}
+	fetchers := []usecase.Fetcher{}
 	if config.RateLogIntervalSeconds != 0 {
 		for _, pair := range []model.CurrencyPair{model.BtcJpy, model.MonaJpy} {
-			rLoggers = append(rLoggers, *usecase.NewRateLogger(exCli, pair, mysqlCli))
+			fetchers = append(fetchers, *usecase.NewFetcher(exCli, pair, mysqlCli))
 		}
 	}
 
-	return bot, rLoggers, nil
+	return bot, fetchers, nil
 }

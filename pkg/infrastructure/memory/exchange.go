@@ -12,9 +12,9 @@ import (
 // Rate レート
 type Rate struct {
 	Datetime      string
-	StoreRate     float32
-	OrderBuyRate  float32
-	OrderSellRate float32
+	StoreRate     float64
+	OrderBuyRate  float64
+	OrderSellRate float64
 }
 
 // NewRate レートを生成
@@ -33,23 +33,23 @@ func NewRate(v []string) (*Rate, error) {
 
 	return &Rate{
 		Datetime:      v[0],
-		StoreRate:     float32(sellRate),
-		OrderBuyRate:  float32(buyRate),
-		OrderSellRate: float32(sellRate),
+		StoreRate:     sellRate,
+		OrderBuyRate:  buyRate,
+		OrderSellRate: sellRate,
 	}, nil
 }
 
 // ExchangeMock 取引所モック
 type ExchangeMock struct {
 	rateReader *csv.Reader
-	slippage   float32
+	slippage   float64
 	Rate       Rate
 	orders     []model.Order
 	contracts  []model.Contract
 }
 
 // NewExchangeMock 生成
-func NewExchangeMock(r io.Reader, slippage float32) (*ExchangeMock, error) {
+func NewExchangeMock(r io.Reader, slippage float64) (*ExchangeMock, error) {
 	reader := csv.NewReader(r)
 
 	// ヘッダを読み飛ばす
@@ -126,7 +126,7 @@ func (e *ExchangeMock) GetContracts() ([]model.Contract, error) {
 
 // PostOrder 注文を送信
 func (e *ExchangeMock) PostOrder(o *model.NewOrder) (*model.Order, error) {
-	var amount float32 = 0.0
+	var amount float64 = 0.0
 	if o.Type == model.MarketBuy {
 		amount = *o.MarketBuyAmount
 	} else {

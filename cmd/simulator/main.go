@@ -59,21 +59,20 @@ func setup(logger domain.Logger, configPath string) (*usecase.Simulator, error) 
 		return nil, err
 	}
 
-	rateRepo := memory.NewRateRepository(sConf.RateHistorySize)
 	mysqlCli := mysql.NewClient(conf.DB.UserName, conf.DB.Password, conf.DB.Host, conf.DB.Port, conf.DB.Name)
 
 	facade := trade.NewFacade(
 		exCli,
-		rateRepo,
 		mysqlCli,
 		mysqlCli,
 		mysqlCli,
+		mysqlCli,
+		nil,
 	)
 	strategy, err := usecase.MakeStrategy(
 		usecase.StrategyType(sConf.StrategyName),
 		facade,
 		logger,
-		model.CurrencyType(conf.TargetCurrency),
 	)
 
 	if err != nil {
@@ -86,8 +85,15 @@ func setup(logger domain.Logger, configPath string) (*usecase.Simulator, error) 
 		PositionCountMax: conf.PositionCountMax,
 	})
 
+	pair := model.CurrencyPair{
+		Key:        model.CurrencyType(conf.TargetCurrency),
+		Settlement: model.JPY,
+	}
+	fetcher := usecase.NewFetcher(exCli, pair, mysqlCli)
+
 	return &usecase.Simulator{
 		Bot:          bot,
+		Fetcher:      fetcher,
 		TradeRepo:    mysqlCli,
 		ExchangeMock: exCli,
 		Logger:       logger,

@@ -303,11 +303,46 @@ func (c *Client) GetProfit() (float64, error) {
 	return profit.Amount, nil
 }
 
-func (c *Client) AddRates(currency model.CurrencyType, rate float64, recordedAt time.Time) error {
+func (c *Client) AddRates(p *model.CurrencyPair, rate float64, recordedAt time.Time) error {
 	r := &Rate{
-		Currency:   string(currency),
+		Currency:   p.String(),
 		Rate:       rate,
 		RecordedAt: recordedAt,
 	}
 	return c.db.Create(&r).Error
+}
+
+// GetRate レート取得
+func (c *Client) GetRate(p *model.CurrencyPair) (float64, error) {
+	var r Rate
+	if err := c.db.Order("recorded_at DESC").First(&r).Error; err != nil {
+		return 0, err
+	}
+	return r.Rate, nil
+}
+
+// GetRates レート取得
+func (c *Client) GetRates(p *model.CurrencyPair, d *time.Duration) (rates []float64, err error) {
+	var rr []Rate
+	if d == nil {
+		err = c.db.
+			Order("recorded_at").Find(&rr).
+			Error
+	} else {
+		begin := time.Now().Add(-1 * *d)
+		err = c.db.
+			Where("recorded_at > ?", begin).
+			Order("recorded_at").Find(&rr).
+			Error
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	rates = []float64{}
+	for _, r := range rr {
+		rates = append(rates, r.Rate)
+	}
+
+	return rates, nil
 }

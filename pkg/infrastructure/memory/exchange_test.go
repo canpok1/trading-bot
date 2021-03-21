@@ -22,7 +22,7 @@ func TestExchangeMock_NotContract_5step(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	var amount, rate float32 = 1.0, 199.0
+	var amount, rate float64 = 1.0, 199.0
 	order, err := mock.PostOrder(&model.NewOrder{
 		Type:            model.Buy,
 		Pair:            model.BtcJpy,
@@ -79,7 +79,7 @@ func TestExchangeMock_CloseBuyOrder_1step(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	var amount, rate float32 = 1.0, 201.0
+	var amount, rate float64 = 1.0, 201.0
 	order, err := mock.PostOrder(&model.NewOrder{
 		Type:            model.Buy,
 		Pair:            model.BtcJpy,
@@ -133,7 +133,7 @@ func TestExchangeMock_CloseBuyOrder_2tep(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	var amount, rate float32 = 1.0, 201.0
+	var amount, rate float64 = 1.0, 201.0
 	order, err := mock.PostOrder(&model.NewOrder{
 		Type:            model.Buy,
 		Pair:            model.BtcJpy,
@@ -188,7 +188,7 @@ func TestExchangeMock_CloseSellOrder_1step(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	var amount, rate float32 = 1.0, 200.0
+	var amount, rate float64 = 1.0, 200.0
 	order, err := mock.PostOrder(&model.NewOrder{
 		Type:            model.Sell,
 		Pair:            model.BtcJpy,
@@ -242,7 +242,7 @@ func TestExchangeMock_CloseSellOrder_2step(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	var amount, rate float32 = 1.0, 200.0
+	var amount, rate float64 = 1.0, 200.0
 	order, err := mock.PostOrder(&model.NewOrder{
 		Type:            model.Sell,
 		Pair:            model.BtcJpy,

@@ -10,9 +10,9 @@ type Order struct {
 	ID           uint64
 	OrderType    int
 	Pair         string
-	Amount       float32
-	Rate         *float32
-	StopLossRate *float32
+	Amount       float64
+	Rate         *float64
+	StopLossRate *float64
 	Status       int
 	OrderedAt    time.Time
 }
@@ -78,14 +78,14 @@ func (o *Order) ToDomainModel() (*model.Order, error) {
 type Contract struct {
 	ID               uint64
 	OrderID          uint64
-	Rate             float32
+	Rate             float64
 	Side             int
 	IncreaseCurrency string
-	IncreaseAmount   float32
+	IncreaseAmount   float64
 	DecreaseCurrency string
-	DecreaseAmount   float32
+	DecreaseAmount   float64
 	FeeCurrency      string
-	FeeAmount        float32
+	FeeAmount        float64
 	Liquidity        int
 }
 

@@ -34,7 +34,8 @@ const (
 
 var (
 	// [197 440 268 886 994 391 176] => 10.254
-	goodGene = []int{197, 440, 268, 886, 994, 391, 176}
+	//goodGene = []int{197, 440, 268, 886, 994, 391, 176}
+	goodGene = []int{}
 )
 
 type Individual struct {
@@ -49,7 +50,6 @@ type Gene []int
 func (g *Gene) MakeConfig() *strategy.ScalpingConfig {
 	v := []int(*g)
 	return &strategy.ScalpingConfig{
-		PositionCountMax:       1,
 		FundsRatio:             0.3,
 		ShortTermSize:          v[0],
 		LongTermSize:           v[0] + v[1],
@@ -289,13 +289,12 @@ func simulation(logger domain.Logger, gene *Gene) (float64, error) {
 		return 0, err
 	}
 
-	rateRepo := memory.NewRateRepository(sConf.RateHistorySize)
-	rdsCli := memory.NewDummyRDS()
+	rdsCli := memory.NewDummyRDS(nil)
 
-	facade := trade.NewFacade(exCli, rateRepo, rdsCli, rdsCli, rdsCli)
+	facade := trade.NewFacade(exCli, rdsCli, rdsCli, rdsCli, rdsCli, nil)
 
 	currency := model.CurrencyType(conf.TargetCurrency)
-	strategy, err := strategy.NewScalpingStrategy(facade, logger, gene.MakeConfig(), currency)
+	strategy, err := strategy.NewScalpingStrategy(facade, logger, gene.MakeConfig())
 	if err != nil {
 		return 0, err
 	}
@@ -305,8 +304,15 @@ func simulation(logger domain.Logger, gene *Gene) (float64, error) {
 		IntervalSeconds: 0,
 	})
 
+	pair := model.CurrencyPair{
+		Key:        model.CurrencyType(conf.TargetCurrency),
+		Settlement: model.JPY,
+	}
+	fetcher := usecase.NewFetcher(exCli, pair, rdsCli)
+
 	simulator := usecase.Simulator{
 		Bot:          bot,
+		Fetcher:      fetcher,
 		TradeRepo:    rdsCli,
 		ExchangeMock: exCli,
 		Logger:       logger,

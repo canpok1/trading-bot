@@ -41,12 +41,12 @@ func (c *Client) getOrderRate(s model.OrderSide, p *model.CurrencyPair) (*model.
 	return &model.OrderRate{
 		Pair: *p,
 		Side: s,
-		Rate: float32(rate),
+		Rate: rate,
 	}, nil
 }
 
 // getRate レート取得
-func (c *Client) getRate(p *model.CurrencyPair) (float32, error) {
+func (c *Client) getRate(p *model.CurrencyPair) (float64, error) {
 	u, err := c.makeURL(fmt.Sprintf("/api/rate/%s", p.String()), nil)
 	if err != nil {
 		return 0, err
@@ -66,7 +66,7 @@ func (c *Client) getRate(p *model.CurrencyPair) (float32, error) {
 		return 0, fmt.Errorf("failed to parse response of GetRate, p: %v; error: %w", p, err)
 	}
 
-	return float32(rate), nil
+	return float64(rate), nil
 }
 
 // getAccountBalance 残高取得

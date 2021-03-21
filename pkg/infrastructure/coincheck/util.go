@@ -100,22 +100,21 @@ func (c *Client) createRequest(method string, url, nonce, signature, body string
 	return
 }
 
-func toFloat32(s string, def float32) float32 {
-	if v, err := strconv.ParseFloat(s, 32); err == nil {
-		return float32(v)
+func toFloat(s string, def float64) float64 {
+	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		return v
 	}
 	return def
 }
 
-func toFloat32Nullable(s string, def *float32) *float32 {
-	if v, err := strconv.ParseFloat(s, 32); err == nil {
-		v32 := float32(v)
-		return &v32
+func toFloatNullable(s string, def *float64) *float64 {
+	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		return &v
 	}
 	return def
 }
 
-func toRequestString(v *float32) string {
+func toRequestString(v *float64) string {
 	if v == nil {
 		return ""
 	}
@@ -127,7 +126,7 @@ func toRequestString(v *float32) string {
 
 	// 小数含めて全体で5桁にする
 	s := fmt.Sprintf("%.5f", *v)
-	return fmt.Sprintf("%s", s[:6])
+	return s[:6]
 }
 
 func toCurrencyPair(s string) model.CurrencyPair {

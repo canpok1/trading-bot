@@ -1,6 +1,7 @@
 package trade
 
 import (
+	"time"
 	"trading-bot/pkg/domain/exchange"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/domain/repository"
@@ -13,6 +14,7 @@ type Facade struct {
 	orderRepo    repository.OrderRepository
 	contractRepo repository.ContractRepository
 	positionRepo repository.PositionRepository
+	rateDuration *time.Duration
 }
 
 // NewFacade 生成
@@ -22,6 +24,7 @@ func NewFacade(
 	orderRepo repository.OrderRepository,
 	contractRepo repository.ContractRepository,
 	positionRepo repository.PositionRepository,
+	rateDuration *time.Duration,
 ) *Facade {
 	return &Facade{
 		exClient:     exCli,
@@ -29,156 +32,65 @@ func NewFacade(
 		orderRepo:    orderRepo,
 		contractRepo: contractRepo,
 		positionRepo: positionRepo,
+		rateDuration: rateDuration,
 	}
-}
-
-// FetchAll 情報更新
-func (f *Facade) FetchAll(pair *model.CurrencyPair) error {
-	if err := f.FetchRate(pair); err != nil {
-		return err
-	}
-
-	if err := f.FetchContracts(); err != nil {
-		return err
-	}
-
-	if err := f.FetchOrders(pair); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// FetchRate レートを更新
-func (f *Facade) FetchRate(pair *model.CurrencyPair) error {
-	buyRate, err := f.exClient.GetOrderRate(pair, model.BuySide)
-	if err != nil {
-		return err
-	}
-	if err := f.rateRepo.AddOrderRate(buyRate); err != nil {
-		return err
-	}
-
-	sellRate, err := f.exClient.GetOrderRate(pair, model.SellSide)
-	if err != nil {
-		return err
-	}
-	if err := f.rateRepo.AddOrderRate(sellRate); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-//FetchContracts 約定情報を更新
-func (f *Facade) FetchContracts() error {
-	oo, err := f.orderRepo.GetOpenOrders()
-	if err != nil {
-		return err
-	}
-	if len(oo) == 0 {
-		return nil
-	}
-
-	cc, err := f.exClient.GetContracts()
-	if err != nil {
-		return err
-	}
-
-	targets := []model.Contract{}
-	for _, c := range cc {
-		for _, o := range oo {
-			if c.OrderID == o.ID {
-				targets = append(targets, c)
-				break
-			}
-		}
-	}
-
-	if err := f.contractRepo.UpsertContracts(targets); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// FetchOrders 注文情報を更新
-func (f *Facade) FetchOrders(pair *model.CurrencyPair) error {
-	openOrders, err := f.exClient.GetOpenOrders(pair)
-	if err != nil {
-		return err
-	}
-
-	registeredOrders, err := f.orderRepo.GetOpenOrders()
-	if err != nil {
-		return err
-	}
-
-	for _, o := range registeredOrders {
-		opened := false
-		for _, openOrder := range openOrders {
-			if openOrder.ID == o.ID {
-				opened = true
-				break
-			}
-		}
-
-		if opened {
-			continue
-		}
-		if err := f.orderRepo.UpdateStatus(o.ID, model.Closed); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // getOrderRate レートを取得
-func (f *Facade) getOrderRate(pair *model.CurrencyPair, side model.OrderSide) (float32, error) {
-	if rate := f.rateRepo.GetCurrentRate(&pair.Key, side); rate != nil {
-		return *rate, nil
-	}
+//func (f *Facade) getOrderRate(pair *model.CurrencyPair, side model.OrderSide) (float64, error) {
+//	if rate := f.rateRepo.GetCurrentRate(&pair.Key, side); rate != nil {
+//		return *rate, nil
+//	}
+//
+//	rate, err := f.exClient.GetOrderRate(pair, side)
+//	if err != nil {
+//		return 0, err
+//	}
+//
+//	return rate.Rate, nil
+//}
 
-	rate, err := f.exClient.GetOrderRate(pair, side)
-	if err != nil {
-		return 0, err
-	}
-
-	return rate.Rate, nil
+// GetRate レートを取得
+func (f *Facade) GetRate(p *model.CurrencyPair) (float64, error) {
+	return f.rateRepo.GetRate(p)
 }
 
-// GetBuyRate 買レートを取得
-func (f *Facade) GetBuyRate(pair *model.CurrencyPair) (float32, error) {
-	return f.getOrderRate(pair, model.BuySide)
+// GetRates レートを取得
+func (f *Facade) GetRates(p *model.CurrencyPair) ([]float64, error) {
+	return f.rateRepo.GetRates(p, f.rateDuration)
 }
 
-// GetSellRate 売レートを取得
-func (f *Facade) GetSellRate(pair *model.CurrencyPair) (float32, error) {
-	return f.getOrderRate(pair, model.SellSide)
-}
+// // GetBuyRate 買レートを取得
+// func (f *Facade) GetBuyRate(pair *model.CurrencyPair) (float64, error) {
+// 	return f.getOrderRate(pair, model.BuySide)
+// }
+//
+// // GetSellRate 売レートを取得
+// func (f *Facade) GetSellRate(pair *model.CurrencyPair) (float64, error) {
+// 	return f.getOrderRate(pair, model.SellSide)
+// }
 
-// GetBuyRateHistory 買レートの遷移を取得
-func (f *Facade) GetBuyRateHistory(pair *model.CurrencyPair) []float32 {
-	return f.rateRepo.GetRateHistory(&pair.Key, model.BuySide)
-}
-
-// GetSellRateHistory 売レートの遷移を取得
-func (f *Facade) GetSellRateHistory(pair *model.CurrencyPair) []float32 {
-	return f.rateRepo.GetRateHistory(&pair.Key, model.SellSide)
-}
-
-// GetSellRateHistory64 売レートの遷移を取得
-func (f *Facade) GetSellRateHistory64(pair *model.CurrencyPair) []float64 {
-	rates := f.rateRepo.GetRateHistory(&pair.Key, model.SellSide)
-
-	rr := []float64{}
-	for _, r := range rates {
-		rr = append(rr, float64(r))
-	}
-
-	return rr
-}
+// // GetBuyRateHistory 買レートの遷移を取得
+// func (f *Facade) GetBuyRateHistory(pair *model.CurrencyPair) []float64 {
+// 	return f.rateRepo.GetRateHistory(&pair.Key, model.BuySide)
+// }
+//
+// // GetSellRateHistory 売レートの遷移を取得
+// func (f *Facade) GetSellRateHistory(pair *model.CurrencyPair) []float64 {
+// 	return f.rateRepo.GetRateHistory(&pair.Key, model.SellSide)
+// }
+//
+// // GetSellRateHistory64 売レートの遷移を取得
+// func (f *Facade) GetSellRateHistory64(pair *model.CurrencyPair) []float64 {
+// 	rates := f.rateRepo.GetRateHistory(&pair.Key, model.SellSide)
+//
+// 	rr := []float64{}
+// 	for _, r := range rates {
+// 		rr = append(rr, float64(r))
+// 	}
+//
+// 	return rr
+// }
 
 // GetOpenPositions オープン状態のポジションを取得
 func (f *Facade) GetOpenPositions() ([]model.Position, error) {
@@ -196,7 +108,7 @@ func (f *Facade) GetOrder(orderID uint64) (*model.Order, error) {
 }
 
 // SendMarketBuyOrder 成行買い注文
-func (f *Facade) SendMarketBuyOrder(pair *model.CurrencyPair, amount float32, p *model.Position) (*model.Position, error) {
+func (f *Facade) SendMarketBuyOrder(pair *model.CurrencyPair, amount float64, p *model.Position) (*model.Position, error) {
 	return f.postOrder(&model.NewOrder{
 		Type:            model.MarketBuy,
 		Pair:            *pair,
@@ -205,7 +117,7 @@ func (f *Facade) SendMarketBuyOrder(pair *model.CurrencyPair, amount float32, p 
 }
 
 // SendMarketSellOrder 成行売り注文
-func (f *Facade) SendMarketSellOrder(pair *model.CurrencyPair, amount float32, p *model.Position) (*model.Position, error) {
+func (f *Facade) SendMarketSellOrder(pair *model.CurrencyPair, amount float64, p *model.Position) (*model.Position, error) {
 	return f.postOrder(&model.NewOrder{
 		Type:            model.MarketSell,
 		Pair:            *pair,
@@ -217,7 +129,7 @@ func (f *Facade) SendMarketSellOrder(pair *model.CurrencyPair, amount float32, p
 }
 
 // SendSellOrder 売り注文
-func (f *Facade) SendSellOrder(pair *model.CurrencyPair, amount float32, rate float32, p *model.Position) (*model.Position, error) {
+func (f *Facade) SendSellOrder(pair *model.CurrencyPair, amount float64, rate float64, p *model.Position) (*model.Position, error) {
 	return f.postOrder(&model.NewOrder{
 		Type:   model.Sell,
 		Pair:   *pair,
@@ -248,10 +160,10 @@ func (f *Facade) CancelSettleOrder(p *model.Position) (*model.Position, error) {
 	return f.positionRepo.CancelSettleOrder(p.ID)
 }
 
-// GetRateHistorySizeMax レート履歴の最大容量を取得
-func (f *Facade) GetRateHistorySizeMax() int {
-	return f.rateRepo.GetHistorySizeMax()
-}
+// // GetRateHistorySizeMax レート履歴の最大容量を取得
+// func (f *Facade) GetRateHistorySizeMax() int {
+// 	return f.rateRepo.GetHistorySizeMax()
+// }
 
 // GetJpyBalance 日本円の残高を取得
 func (f *Facade) GetJpyBalance() (*model.Balance, error) {

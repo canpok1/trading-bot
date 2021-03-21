@@ -43,27 +43,27 @@ func (c *Client) GetBalance(currency *model.CurrencyType) (*model.Balance, error
 	case model.JPY:
 		return &model.Balance{
 			Currency: *currency,
-			Amount:   toFloat32(res.Jpy, 0),
+			Amount:   toFloat(res.Jpy, 0),
 		}, nil
 	case model.BTC:
 		return &model.Balance{
 			Currency: *currency,
-			Amount:   toFloat32(res.Btc, 0),
+			Amount:   toFloat(res.Btc, 0),
 		}, nil
 	case model.ETC:
 		return &model.Balance{
 			Currency: *currency,
-			Amount:   toFloat32(res.Etc, 0),
+			Amount:   toFloat(res.Etc, 0),
 		}, nil
 	case model.FCT:
 		return &model.Balance{
 			Currency: *currency,
-			Amount:   toFloat32(res.Fct, 0),
+			Amount:   toFloat(res.Fct, 0),
 		}, nil
 	case model.MONA:
 		return &model.Balance{
 			Currency: *currency,
-			Amount:   toFloat32(res.Mona, 0),
+			Amount:   toFloat(res.Mona, 0),
 		}, nil
 	default:
 		return nil, fmt.Errorf("failed to get balance, unknown ")
@@ -86,9 +86,9 @@ func (c *Client) GetOpenOrders(pair *model.CurrencyPair) ([]model.Order, error) 
 			ID:           o.ID,
 			Type:         model.OrderType(o.OrderType),
 			Pair:         toCurrencyPair(o.Pair),
-			Amount:       toFloat32(o.PendingAmount, 0),
-			Rate:         toFloat32Nullable(o.Rate, nil),
-			StopLossRate: toFloat32Nullable(o.StopLossRate, nil),
+			Amount:       toFloat(o.PendingAmount, 0),
+			Rate:         toFloatNullable(o.Rate, nil),
+			StopLossRate: toFloatNullable(o.StopLossRate, nil),
 			Status:       model.Open,
 			OrderedAt:    o.CreatedAt,
 		})
@@ -110,9 +110,9 @@ func (c *Client) GetContracts() ([]model.Contract, error) {
 		}
 
 		var increaseCurrency, decreaseCurrency model.CurrencyType
-		var increaseAmount, decreaseAmount float32
+		var increaseAmount, decreaseAmount float64
 		for k, v := range t.Funds {
-			value := toFloat32(v, 0)
+			value := toFloat(v, 0)
 			if value > 0.0 {
 				increaseCurrency = model.CurrencyType(k)
 				increaseAmount = value
@@ -139,13 +139,13 @@ func (c *Client) GetContracts() ([]model.Contract, error) {
 		cc = append(cc, model.Contract{
 			ID:               t.ID,
 			OrderID:          t.OrderID,
-			Rate:             toFloat32(t.Rate, 0),
+			Rate:             toFloat(t.Rate, 0),
 			IncreaseCurrency: increaseCurrency,
 			IncreaseAmount:   increaseAmount,
 			DecreaseCurrency: decreaseCurrency,
 			DecreaseAmount:   decreaseAmount,
 			FeeCurrency:      model.CurrencyType(t.FeeCurrency),
-			Fee:              toFloat32(t.Fee, 0),
+			Fee:              toFloat(t.Fee, 0),
 			Liquidity:        liquidity,
 			Side:             side,
 		})
@@ -163,9 +163,9 @@ func (c *Client) PostOrder(o *model.NewOrder) (*model.Order, error) {
 		ID:           res.ID,
 		Type:         model.OrderType(res.OrderType),
 		Pair:         o.Pair,
-		Amount:       toFloat32(res.Amount, 0),
-		Rate:         toFloat32Nullable(res.Rate, nil),
-		StopLossRate: toFloat32Nullable(res.StopLossRate, nil),
+		Amount:       toFloat(res.Amount, 0),
+		Rate:         toFloatNullable(res.Rate, nil),
+		StopLossRate: toFloatNullable(res.StopLossRate, nil),
 		Status:       model.Open,
 		OrderedAt:    res.CreatedAt,
 	}, nil

@@ -27,7 +27,6 @@ type DB struct {
 // SimulatorConfig シミュレーター用設定
 type SimulatorConfig struct {
 	StrategyName    string  `required:"true" split_words:"true"`
-	RateHistorySize int     `required:"true" split_words:"true"`
-	Slippage        float32 `required:"true" split_words:"true"`
+	Slippage        float64 `required:"true" split_words:"true"`
 	RateHistoryFile string  `required:"true" split_words:"true"`
 }

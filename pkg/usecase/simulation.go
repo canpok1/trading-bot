@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"time"
 	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/repository"
 	"trading-bot/pkg/infrastructure/memory"
@@ -12,8 +11,9 @@ import (
 // Simulator シミュレーター
 type Simulator struct {
 	Bot          *Bot
-	TradeRepo    repository.TradeRepository
+	Fetcher      *Fetcher
 	ExchangeMock *memory.ExchangeMock
+	TradeRepo    repository.TradeRepository
 	Logger       domain.Logger
 }
 
@@ -24,18 +24,14 @@ func (s *Simulator) Run(ctx context.Context) (float64, error) {
 	}
 
 	for {
+		if err := s.Fetcher.Fetch(); err != nil {
+			return 0, err
+		}
+
 		if err := s.Bot.Trade(ctx); err != nil {
 			return 0, err
 		}
 
-		r := float64(s.ExchangeMock.Rate.OrderSellRate)
-		t, err := time.Parse(time.RFC3339, s.ExchangeMock.Rate.Datetime)
-		if err != nil {
-			return 0, err
-		}
-		if err := s.TradeRepo.AddRates(s.Bot.Config.Currency, r, t); err != nil {
-			return 0, err
-		}
 		if !s.ExchangeMock.NextStep() {
 			break
 		}

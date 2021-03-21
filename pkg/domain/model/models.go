@@ -42,30 +42,30 @@ type LiquidityType int
 // StoreRate 販売所レート
 type StoreRate struct {
 	Pair CurrencyPair
-	Rate float32
+	Rate float64
 }
 
 // OrderRate 注文レート
 type OrderRate struct {
 	Pair CurrencyPair
 	Side OrderSide
-	Rate float32
+	Rate float64
 }
 
 // Balance 残高
 type Balance struct {
 	Currency CurrencyType
-	Amount   float32
+	Amount   float64
 }
 
 // NewOrder 新規注文
 type NewOrder struct {
 	Type            OrderType
 	Pair            CurrencyPair
-	Amount          *float32
-	Rate            *float32
-	MarketBuyAmount *float32
-	StopLossRate    *float32
+	Amount          *float64
+	Rate            *float64
+	MarketBuyAmount *float64
+	StopLossRate    *float64
 }
 
 // OrderStatus 注文ステータス
@@ -76,9 +76,9 @@ type Order struct {
 	ID           uint64
 	Type         OrderType
 	Pair         CurrencyPair
-	Amount       float32
-	Rate         *float32
-	StopLossRate *float32
+	Amount       float64
+	Rate         *float64
+	StopLossRate *float64
 	Status       OrderStatus
 	OrderedAt    time.Time
 }
@@ -114,13 +114,13 @@ type OrderSide int
 type Contract struct {
 	ID               uint64
 	OrderID          uint64
-	Rate             float32
+	Rate             float64
 	IncreaseCurrency CurrencyType
-	IncreaseAmount   float32
+	IncreaseAmount   float64
 	DecreaseCurrency CurrencyType
-	DecreaseAmount   float32
+	DecreaseAmount   float64
 	FeeCurrency      CurrencyType
-	Fee              float32
+	Fee              float64
 	Liquidity        LiquidityType
 	Side             OrderSide
 }

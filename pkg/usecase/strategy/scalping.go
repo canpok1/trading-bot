@@ -10,8 +10,7 @@ import (
 )
 
 type ScalpingConfig struct {
-	PositionCountMax       int     `toml:"position_count_max"`
-	FundsRatio             float32 `toml:"funds_ratio"`
+	FundsRatio             float64 `toml:"funds_ratio"`
 	ShortTermSize          int     `toml:"short_term_size"`
 	LongTermSize           int     `toml:"long_term_size"`
 	LossCutLowerLimitPer   float64 `toml:"loss_cut_lower_limit_per"`
@@ -36,47 +35,36 @@ type Scalping struct {
 	facade *trade.Facade
 
 	config *ScalpingConfig
-
-	pair *model.CurrencyPair
 }
 
 // NewScalpingStrategy 戦略を生成
-func NewScalpingStrategy(facade *trade.Facade, logger domain.Logger, config *ScalpingConfig, currency model.CurrencyType) (*Scalping, error) {
+func NewScalpingStrategy(facade *trade.Facade, logger domain.Logger, config *ScalpingConfig) (*Scalping, error) {
 	s := &Scalping{
 		logger: logger,
 		facade: facade,
 		config: config,
-		pair: &model.CurrencyPair{
-			Key:        currency,
-			Settlement: model.JPY,
-		},
 	}
 
 	return s, nil
 }
 
-func (s *Scalping) Buy(rates []float64, positions []model.Position) error {
-	shouldBuy, err := s.shouldBuy(rates, len(positions))
+func (s *Scalping) Buy(p model.CurrencyPair, rates []float64, positions []model.Position) error {
+	shouldBuy, err := s.shouldBuy(&p, rates, len(positions))
 	if err != nil {
 		return err
 	}
 	if shouldBuy {
-		if err := s.buy(); err != nil {
+		if err := s.buy(&p); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Scalping) shouldBuy(rates []float64, posCount int) (bool, error) {
+func (s *Scalping) shouldBuy(p *model.CurrencyPair, rates []float64, posCount int) (bool, error) {
 	// レート情報が少ないときは判断不可
 	if len(rates) <= s.config.LongTermSize {
 		s.logger.Debug("[buy] => skip buy (rate count:%d <= required:%d)", len(rates), s.config.LongTermSize)
-		return false, nil
-	}
-
-	if posCount >= s.config.PositionCountMax {
-		s.logger.Debug("[buy] => skip buy (open pos count: %d >= max(%d))", posCount, s.config.PositionCountMax)
 		return false, nil
 	}
 
@@ -107,7 +95,7 @@ func (s *Scalping) shouldBuy(rates []float64, posCount int) (bool, error) {
 	return true, nil
 }
 
-func (s *Scalping) buy() error {
+func (s *Scalping) buy(p *model.CurrencyPair) error {
 	balance, err := s.facade.GetJpyBalance()
 	if err != nil {
 		return err
@@ -115,7 +103,7 @@ func (s *Scalping) buy() error {
 	amount := balance.Amount * s.config.FundsRatio
 
 	s.logger.Debug("[buy] sending buy order ...")
-	pos, err := s.facade.SendMarketBuyOrder(s.pair, amount, nil)
+	pos, err := s.facade.SendMarketBuyOrder(p, amount, nil)
 	if err != nil {
 		return err
 	}
@@ -124,22 +112,22 @@ func (s *Scalping) buy() error {
 	return nil
 }
 
-func (s *Scalping) Sell(rates []float64, positions []model.Position) error {
-	shouldSell, err := s.shouldSell(rates, len(positions))
+func (s *Scalping) Sell(pair model.CurrencyPair, rates []float64, positions []model.Position) error {
+	shouldSell, err := s.shouldSell(&pair, rates, len(positions))
 	if err != nil {
 		return err
 	}
 	for _, p := range positions {
-		shouldFixProfit, err := s.shouldFixProfit(rates, &p)
+		shouldFixProfit, err := s.shouldFixProfit(&pair, rates, &p)
 		if err != nil {
 			return err
 		}
-		shouldLossCut, err := s.shouldLossCut(rates, &p)
+		shouldLossCut, err := s.shouldLossCut(&pair, rates, &p)
 		if err != nil {
 			return err
 		}
 		if shouldSell || shouldFixProfit || shouldLossCut {
-			if err := s.sell(&p); err != nil {
+			if err := s.sell(&pair, &p); err != nil {
 				return err
 			}
 		}
@@ -148,7 +136,7 @@ func (s *Scalping) Sell(rates []float64, positions []model.Position) error {
 	return nil
 }
 
-func (s *Scalping) shouldSell(rates []float64, posCount int) (bool, error) {
+func (s *Scalping) shouldSell(pair *model.CurrencyPair, rates []float64, posCount int) (bool, error) {
 	// レート情報が少ないときは判断不可
 	if len(rates) < s.config.LongTermSize {
 		s.logger.Debug("[sell] => skip sell (rate count:%d < required:%d)", len(rates), s.config.LongTermSize)
@@ -188,7 +176,7 @@ func (s *Scalping) shouldSell(rates []float64, posCount int) (bool, error) {
 }
 
 // shouldFixProfit 利確すべきか判定
-func (s *Scalping) shouldFixProfit(rates []float64, pos *model.Position) (bool, error) {
+func (s *Scalping) shouldFixProfit(pair *model.CurrencyPair, rates []float64, pos *model.Position) (bool, error) {
 	// レート情報が少ないときは判断不可
 	if len(rates) <= s.config.LongTermSize {
 		s.logger.Debug("[pos:%d][fixProfit] => skip fix profit (rate count:%d <= required:%d)", pos.ID, len(rates), s.config.LongTermSize)
@@ -234,7 +222,7 @@ func (s *Scalping) shouldFixProfit(rates []float64, pos *model.Position) (bool, 
 }
 
 // ShouldLossCut ロスカットすべきか判定
-func (s *Scalping) shouldLossCut(rates []float64, pos *model.Position) (bool, error) {
+func (s *Scalping) shouldLossCut(pair *model.CurrencyPair, rates []float64, pos *model.Position) (bool, error) {
 	// レート情報が少ないときは判断不可
 	if len(rates) <= s.config.LongTermSize {
 		s.logger.Debug("[pos:%d][losscut] => skip loss cut (rate count:%d <= required:%d)", pos.ID, len(rates), s.config.LongTermSize)
@@ -290,18 +278,18 @@ func (s *Scalping) shouldLossCut(rates []float64, pos *model.Position) (bool, er
 	return true, nil
 }
 
-func (s *Scalping) sell(p *model.Position) error {
+func (s *Scalping) sell(pair *model.CurrencyPair, p *model.Position) error {
 	contracts, err := s.facade.GetContracts(p.OpenerOrder.ID)
 	if err != nil {
 		return err
 	}
-	var amount float32
+	var amount float64
 	for _, c := range contracts {
 		amount += c.IncreaseAmount
 	}
 
 	s.logger.Debug("[pos:%d][sell] sending sell order ...", p.ID)
-	pos, err := s.facade.SendMarketSellOrder(s.pair, amount, p)
+	pos, err := s.facade.SendMarketSellOrder(pair, amount, p)
 	if err != nil {
 		return err
 	}

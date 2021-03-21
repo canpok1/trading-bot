@@ -12,7 +12,9 @@ type Bot struct {
 	logger   domain.Logger
 	facade   *trade.Facade
 	strategy Strategy
-	Config   *BotConfig
+	pair     model.CurrencyPair
+
+	Config *BotConfig
 }
 
 type BotConfig struct {
@@ -26,31 +28,42 @@ func NewBot(l domain.Logger, f *trade.Facade, s Strategy, config *BotConfig) *Bo
 		logger:   l,
 		facade:   f,
 		strategy: s,
-		Config:   config,
+		pair: model.CurrencyPair{
+			Key:        config.Currency,
+			Settlement: model.JPY,
+		},
+		Config: config,
 	}
 }
 
 func (b *Bot) Trade(ctx context.Context) error {
-	pair := model.CurrencyPair{
-		Key:        b.Config.Currency,
-		Settlement: model.JPY,
-	}
-	if err := b.facade.FetchAll(&pair); err != nil {
-		return err
+	if b.strategy == nil {
+		return nil
 	}
 
-	rr := b.facade.GetSellRateHistory64(&pair)
+	rr, err := b.facade.GetRates(&model.CurrencyPair{
+		Key:        b.Config.Currency,
+		Settlement: model.JPY,
+	})
+	if err != nil {
+		return err
+	}
 
 	pp, err := b.facade.GetOpenPositions()
 	if err != nil {
 		return err
 	}
 
-	if err := b.strategy.Buy(rr, pp); err != nil {
-		return err
+	cnt := len(pp)
+	if cnt >= b.Config.PositionCountMax {
+		b.logger.Debug("[buy] => skip buy (open pos count: %d >= max(%d))", cnt, b.Config.PositionCountMax)
+	} else {
+		if err := b.strategy.Buy(b.pair, rr, pp); err != nil {
+			return err
+		}
 	}
 
-	if err := b.strategy.Sell(rr, pp); err != nil {
+	if err := b.strategy.Sell(b.pair, rr, pp); err != nil {
 		return err
 	}
 
