@@ -270,3 +270,8 @@ func (e *ExchangeMock) closeOrder(orderID uint64) {
 		e.contracts = append(e.contracts, *contract)
 	}
 }
+
+// GetVolumes 取引量を取得
+func (e *ExchangeMock) GetVolumes(*model.CurrencyPair, model.OrderSide, time.Duration) (float64, error) {
+	return 0, nil
+}

@@ -35,7 +35,7 @@ func NewOrder(org *model.Order, status model.OrderStatus) *Order {
 		ID:           org.ID,
 		OrderType:    orderType,
 		Pair:         org.Pair.String(),
-		Amount:       org.Amount,
+		Amount:       round(org.Amount),
 		Rate:         org.Rate,
 		StopLossRate: org.StopLossRate,
 		Status:       int(status),
@@ -97,11 +97,11 @@ func NewContract(org *model.Contract) *Contract {
 		Rate:             org.Rate,
 		Side:             int(org.Side),
 		IncreaseCurrency: string(org.IncreaseCurrency),
-		IncreaseAmount:   org.IncreaseAmount,
+		IncreaseAmount:   round(org.IncreaseAmount),
 		DecreaseCurrency: string(org.DecreaseCurrency),
-		DecreaseAmount:   org.DecreaseAmount,
+		DecreaseAmount:   round(org.DecreaseAmount),
 		FeeCurrency:      string(org.FeeCurrency),
-		FeeAmount:        org.Fee,
+		FeeAmount:        round(org.Fee),
 		Liquidity:        int(org.Liquidity),
 	}
 }
@@ -122,4 +122,8 @@ type Rate struct {
 	Currency   string
 	Rate       float64
 	RecordedAt time.Time
+}
+
+func round(v float64) float64 {
+	return float64(int(v*10000)) / 10000
 }

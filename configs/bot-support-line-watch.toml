@@ -1,0 +1,14 @@
+# サポートライン監視
+interval_seconds = 60
+funds_ratio = 0.2
+loss_cut_lower_limit_per = 0.990
+fix_profit_upper_limit_per = 1.005
+max_position_count = 3
+
+buy_interval_seconds = 3600
+
+support_line_period_1 = 720
+support_line_period_2 = 720
+
+max_volume = 1000.0
+volume_check_seconds = 120

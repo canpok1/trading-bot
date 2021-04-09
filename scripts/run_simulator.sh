@@ -17,10 +17,11 @@ export BOT_DB_USER_NAME=bot
 export BOT_DB_PASSWORD=P@ssw0rd
 
 # シミュレーター設定
-#export BOT_STRATEGY_NAME=uptrend
-export BOT_STRATEGY_NAME=scalping
+# export BOT_STRATEGY_NAME=uptrend
+# export BOT_STRATEGY_NAME=scalping
+export BOT_STRATEGY_NAME=range
 export BOT_SLIPPAGE=0.001
 #export BOT_RATE_HISTORY_FILE=./data/simulator/historical_mona_jpy.csv
-export BOT_RATE_HISTORY_FILE=./data/simulator/historical_mona_jpy_20210315_010219_JST.csv
+export BOT_RATE_HISTORY_FILE=./data/simulator/historical_btc_jpy_1.csv
 
 go run cmd/simulator/main.go

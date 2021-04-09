@@ -1,18 +1,40 @@
 package coincheck
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 	"trading-bot/pkg/domain/model"
+	"trading-bot/pkg/infrastructure/memory"
+
+	"github.com/gorilla/websocket"
+	gocache "github.com/pmylund/go-cache"
 )
 
 const (
-	origin = "https://coincheck.com/"
+	origin               = "https://coincheck.com/"
+	originWS             = "wss://ws-api.coincheck.com/"
+	cacheExpire          = 24 * 60 * 60 * time.Second
+	cacheCleanupInterval = 60 * time.Second
 )
 
 // Client Coincheck用クライアント
 type Client struct {
+	Logger       *memory.Logger
 	APIAccessKey string
 	APISecretKey string
+	tradeCaches  map[string]map[int]*gocache.Cache
+}
+
+// NewClient クライアントを生成
+func NewClient(logger *memory.Logger, APIAccessKey, APISecretKey string) *Client {
+	return &Client{
+		Logger:       logger,
+		APIAccessKey: APIAccessKey,
+		APISecretKey: APISecretKey,
+		tradeCaches:  map[string]map[int]*gocache.Cache{},
+	}
 }
 
 // GetStoreRate 販売所のレート取得
@@ -174,4 +196,104 @@ func (c *Client) PostOrder(o *model.NewOrder) (*model.Order, error) {
 // DeleteOrder 注文削除
 func (c *Client) DeleteOrder(id uint64) error {
 	return c.deleteOrder(id)
+}
+
+// GetVolumes 取引量を取得
+func (c *Client) GetVolumes(p *model.CurrencyPair, side model.OrderSide, d time.Duration) (float64, error) {
+	cache := c.getCache(p, side)
+	if cache == nil {
+		return 0.0, nil
+	}
+
+	volumes := 0.0
+	border := time.Now().Add(-d)
+	for _, item := range cache.Items() {
+		h, ok := item.Object.(*TradeHistory)
+		if !ok {
+			return 0.0, fmt.Errorf("type assertion error, volume cache item is not TradeHistory; %v", item.Object)
+		}
+		if h.Time.Before(border) {
+			continue
+		}
+		volumes += h.Amount
+	}
+	return volumes, nil
+}
+
+// SubscribeTradeHistory 取引履歴を購読
+func (c *Client) SubscribeTradeHistory(ctx context.Context, p *model.CurrencyPair, callback func(model.OrderSide, float64) error) error {
+	ws, _, err := websocket.DefaultDialer.DialContext(ctx, originWS, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		ws.Close()
+	}()
+
+	ws.SetCloseHandler(func(code int, text string) error {
+		return nil
+	})
+
+	param := map[string]string{
+		"type":    "subscribe",
+		"channel": p.String() + "-trades",
+	}
+	bytes, err := json.Marshal(param)
+	if err != nil {
+		return err
+	}
+	if err := ws.WriteMessage(websocket.TextMessage, bytes); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			ws.SetReadDeadline(time.Now().Add(30 * time.Second))
+			_, b, err := ws.ReadMessage()
+			if err != nil {
+				return err
+			}
+			c.Logger.Debug("[receive] => trade:%v", string(b))
+
+			h, err := NewTradeHistory(b)
+			if err != nil {
+				return err
+			}
+
+			var side model.OrderSide
+			if h.Side == "buy" {
+				side = model.BuySide
+			} else {
+				side = model.SellSide
+			}
+
+			if _, ok := c.tradeCaches[p.String()]; !ok {
+				c.tradeCaches[p.String()] = map[int]*gocache.Cache{}
+			}
+			if _, ok := c.tradeCaches[p.String()][int(side)]; !ok {
+				c.tradeCaches[p.String()][int(side)] = gocache.New(cacheExpire, cacheCleanupInterval)
+			}
+
+			key := fmt.Sprintf("%d", h.ID)
+			if err := c.tradeCaches[p.String()][int(side)].Add(key, h, cacheExpire); err != nil {
+				return err
+			}
+
+			if err := callback(side, h.Rate); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (c *Client) getCache(p *model.CurrencyPair, side model.OrderSide) *gocache.Cache {
+	if caches, ok := c.tradeCaches[p.String()]; ok {
+		if cache, ok := caches[int(side)]; ok {
+			return cache
+		}
+	}
+	return nil
 }

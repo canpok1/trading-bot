@@ -1,8 +1,7 @@
 version: '3'
 services:
   db:
-    image: mysql:8
-    command: --default-authentication-plugin=mysql_native_password
+    image: mariadb:10.5
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: T4g5Ucs6
@@ -11,14 +10,15 @@ services:
       MYSQL_PASSWORD: P@ssw0rd
     ports:
       - 3306:3306
+    volumes:
+      - ../data/db:/var/lib/mysql
   adminer:
     image: adminer
     restart: always
     ports:
       - 8080:8080
   simulation-db:
-    image: mysql:8
-    command: --default-authentication-plugin=mysql_native_password
+    image: mariadb:10.5
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: T4g5Ucs6
@@ -54,3 +54,4 @@ services:
       - ../data/metabase:/metabase-data
     environment:
       MB_DB_FILE: /metabase-data/metabase.db
+

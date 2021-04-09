@@ -315,7 +315,7 @@ func (c *Client) AddRates(p *model.CurrencyPair, rate float64, recordedAt time.T
 // GetRate レート取得
 func (c *Client) GetRate(p *model.CurrencyPair) (float64, error) {
 	var r Rate
-	if err := c.db.Order("recorded_at DESC").First(&r).Error; err != nil {
+	if err := c.db.Where("currency = ?", p.String()).Order("recorded_at DESC").First(&r).Error; err != nil {
 		return 0, err
 	}
 	return r.Rate, nil
@@ -326,12 +326,13 @@ func (c *Client) GetRates(p *model.CurrencyPair, d *time.Duration) (rates []floa
 	var rr []Rate
 	if d == nil {
 		err = c.db.
+			Where("currency = ?", p.String()).
 			Order("recorded_at").Find(&rr).
 			Error
 	} else {
 		begin := time.Now().Add(-1 * *d)
 		err = c.db.
-			Where("recorded_at > ?", begin).
+			Where("recorded_at > ? AND currency = ?", begin, p.String()).
 			Order("recorded_at").Find(&rr).
 			Error
 	}

@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/model"
@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	rateDuration = 10 * time.Minute
+	rateDuration = 24 * time.Hour
 )
 
 func main() {
@@ -36,10 +36,12 @@ func main() {
 	strategyType := usecase.StrategyType(os.Args[1])
 
 	logger.Info("strategy: %s\n", strategyType)
+	logger.Info("currency: %s\n", config.TargetCurrency)
 	logger.Info("rate log interval: %dsec\n", config.RateLogIntervalSeconds)
 	logger.Info("======================================")
 
-	bot, fetchers, err := setup(&logger, &config, strategyType)
+	exCli := coincheck.NewClient(&logger, config.Exchange.AccessKey, config.Exchange.SecretKey)
+	bot, fetchers, err := setup(&logger, &config, strategyType, exCli)
 	if err != nil {
 		logger.Error(err.Error())
 		return
@@ -69,11 +71,31 @@ func main() {
 			case <-ticker.C:
 				for _, f := range fetchers {
 					if err := f.Fetch(); err != nil {
-						return fmt.Errorf("failed to fetch, error: %w", err)
+						logger.Error("failed to fetch, error: %w", err)
 					}
 				}
 			case <-ctx.Done():
 				return nil
+			}
+		}
+	})
+
+	errGroup.Go(func() error {
+		// 取引履歴の監視
+		pair := model.CurrencyPair{
+			Key:        model.CurrencyType(config.TargetCurrency),
+			Settlement: model.JPY,
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				if err := exCli.SubscribeTradeHistory(ctx, &pair, bot.ReceiveTrade); err != nil {
+					if !strings.Contains(err.Error(), "i/o timeout") {
+						logger.Error("error occured, %v", err)
+					}
+				}
 			}
 		}
 	})
@@ -99,8 +121,7 @@ func main() {
 	}
 }
 
-func setup(logger domain.Logger, config *model.Config, strategyType usecase.StrategyType) (*usecase.Bot, []usecase.Fetcher, error) {
-	exCli := &coincheck.Client{APIAccessKey: config.Exchange.AccessKey, APISecretKey: config.Exchange.SecretKey}
+func setup(logger domain.Logger, config *model.Config, strategyType usecase.StrategyType, exCli *coincheck.Client) (*usecase.Bot, []usecase.Fetcher, error) {
 	mysqlCli := mysql.NewClient(config.DB.UserName, config.DB.Password, config.DB.Host, config.DB.Port, config.DB.Name)
 
 	d := rateDuration
@@ -124,7 +145,6 @@ func setup(logger domain.Logger, config *model.Config, strategyType usecase.Stra
 
 	bot := usecase.NewBot(logger, facade, strategy, &usecase.BotConfig{
 		Currency:         model.CurrencyType(config.TargetCurrency),
-		IntervalSeconds:  config.RateLogIntervalSeconds,
 		PositionCountMax: config.PositionCountMax,
 	})
 

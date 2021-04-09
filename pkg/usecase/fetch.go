@@ -25,7 +25,7 @@ func NewFetcher(exCli exchange.Client, pair model.CurrencyPair, rdsCli repositor
 
 // Fetch 各種情報を取得
 func (f *Fetcher) Fetch() error {
-	r, err := f.exCli.GetStoreRate(&f.pair)
+	r, err := f.exCli.GetOrderRate(&f.pair, model.SellSide)
 	if err != nil {
 		return err
 	}

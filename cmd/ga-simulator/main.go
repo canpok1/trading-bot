@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	geneSize      = 8
-	population    = 40
-	maxGeneration = 100
+	geneSize      = 6
+	population    = 1
+	maxGeneration = 1
 	maxErrorCount = 5
 	//maxConvergedCount = 3
 	selectionRate = 0.020
@@ -34,8 +34,8 @@ const (
 
 var (
 	// [197 440 268 886 994 391 176] => 10.254
-	//goodGene = []int{197, 440, 268, 886, 994, 391, 176}
-	goodGene = []int{}
+	goodGene = []int{30, 440, 268, 886, 994, 391}
+	//goodGene = []int{}
 )
 
 type Individual struct {
@@ -47,18 +47,27 @@ type Individual struct {
 // 値は0～999
 type Gene []int
 
-func (g *Gene) MakeConfig() *strategy.ScalpingConfig {
+func (g *Gene) MakeConfig() *strategy.RangeConfig {
 	v := []int(*g)
-	return &strategy.ScalpingConfig{
+	//return &strategy.ScalpingConfig{
+	//	FundsRatio:             0.3,
+	//	ShortTermSize:          v[0],
+	//	LongTermSize:           v[0] + v[1],
+	//	LossCutLowerLimitPer:   float64(v[2]) / 1000.0,
+	//	FixProfitUpperLimitPer: 1.0 + float64(v[3])/1000.0,
+	//	BBandsNBDevUp:          float64(v[4]) / 300.0,
+	//	BBandsNBDevDown:        float64(v[5]) / 300.0,
+	//	RsiLower:               float64(v[6]) / 10.0,
+	//	RsiUpper:               float64(v[6])/10.0 + float64(v[7])/10.0,
+	//}
+	return &strategy.RangeConfig{
 		FundsRatio:             0.3,
-		ShortTermSize:          v[0],
-		LongTermSize:           v[0] + v[1],
-		LossCutLowerLimitPer:   float64(v[2]) / 1000.0,
-		FixProfitUpperLimitPer: 1.0 + float64(v[3])/1000.0,
-		BBandsNBDevUp:          float64(v[4]) / 300.0,
-		BBandsNBDevDown:        float64(v[5]) / 300.0,
-		RsiLower:               float64(v[6]) / 10.0,
-		RsiUpper:               float64(v[6])/10.0 + float64(v[7])/10.0,
+		TermSize:               v[0],
+		LossCutLowerLimitPer:   float64(v[1]) / 1000.0,
+		FixProfitUpperLimitPer: 1.0 + float64(v[2])/1000.0,
+		BBandsNBDevUp:          float64(v[3]) / 300.0,
+		BBandsNBDevDown:        float64(v[4]) / 300.0,
+		BBandsMaxWidthRate:     float64(v[5]) / 1000.0,
 	}
 }
 
@@ -69,7 +78,7 @@ func (i *Individual) String() string {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	logger := memory.Logger{Level: memory.Info}
+	logger := memory.Logger{Level: memory.Debug}
 
 	logger.Info("===== START GA SIMULATION ====================")
 	defer logger.Info("===== END GA SIMULATION ======================")
@@ -294,14 +303,14 @@ func simulation(logger domain.Logger, gene *Gene) (float64, error) {
 	facade := trade.NewFacade(exCli, rdsCli, rdsCli, rdsCli, rdsCli, nil)
 
 	currency := model.CurrencyType(conf.TargetCurrency)
-	strategy, err := strategy.NewScalpingStrategy(facade, logger, gene.MakeConfig())
+	//strategy, err := strategy.NewScalpingStrategy(facade, logger, gene.MakeConfig())
+	strategy, err := strategy.NewRangeStrategy(facade, logger, gene.MakeConfig())
 	if err != nil {
 		return 0, err
 	}
 
 	bot := usecase.NewBot(logger, facade, strategy, &usecase.BotConfig{
-		Currency:        currency,
-		IntervalSeconds: 0,
+		Currency: currency,
 	})
 
 	pair := model.CurrencyPair{

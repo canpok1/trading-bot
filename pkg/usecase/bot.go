@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"time"
 	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/model"
 	"trading-bot/pkg/usecase/trade"
@@ -19,7 +18,6 @@ type Bot struct {
 
 type BotConfig struct {
 	Currency         model.CurrencyType
-	IntervalSeconds  int
 	PositionCountMax int
 }
 
@@ -41,14 +39,6 @@ func (b *Bot) Trade(ctx context.Context) error {
 		return nil
 	}
 
-	rr, err := b.facade.GetRates(&model.CurrencyPair{
-		Key:        b.Config.Currency,
-		Settlement: model.JPY,
-	})
-	if err != nil {
-		return err
-	}
-
 	pp, err := b.facade.GetOpenPositions()
 	if err != nil {
 		return err
@@ -58,12 +48,12 @@ func (b *Bot) Trade(ctx context.Context) error {
 	if cnt >= b.Config.PositionCountMax {
 		b.logger.Debug("[buy] => skip buy (open pos count: %d >= max(%d))", cnt, b.Config.PositionCountMax)
 	} else {
-		if err := b.strategy.Buy(b.pair, rr, pp); err != nil {
+		if err := b.strategy.Buy(b.pair, pp); err != nil {
 			return err
 		}
 	}
 
-	if err := b.strategy.Sell(b.pair, rr, pp); err != nil {
+	if err := b.strategy.Sell(b.pair, pp); err != nil {
 		return err
 	}
 
@@ -72,16 +62,28 @@ func (b *Bot) Trade(ctx context.Context) error {
 
 // Wait 待機
 func (b *Bot) Wait(ctx context.Context) error {
-	interval := time.Duration(b.Config.IntervalSeconds) * time.Second
+	return b.strategy.Wait(ctx)
+}
 
-	b.logger.Debug("waiting ... (%v)\n", interval)
-	ctx, cancel := context.WithTimeout(ctx, interval)
-	defer cancel()
-
-	<-ctx.Done()
-
-	if ctx.Err() != context.Canceled && ctx.Err() != context.DeadlineExceeded {
-		return ctx.Err()
+func (b *Bot) ReceiveTrade(side model.OrderSide, rate float64) error {
+	if b.strategy == nil {
+		return nil
 	}
-	return nil
+
+	if side == model.BuySide {
+		pp, err := b.facade.GetOpenPositions()
+		if err != nil {
+			return err
+		}
+
+		cnt := len(pp)
+		if cnt >= b.Config.PositionCountMax {
+			b.logger.Debug("[buy] => skip buy (open pos count: %d >= max(%d))", cnt, b.Config.PositionCountMax)
+			return nil
+		}
+
+		return b.strategy.BuyTradeCallback(b.pair, rate)
+	} else {
+		return b.strategy.SellTradeCallback(b.pair, rate)
+	}
 }

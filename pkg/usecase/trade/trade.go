@@ -1,6 +1,7 @@
 package trade
 
 import (
+	"context"
 	"time"
 	"trading-bot/pkg/domain/exchange"
 	"trading-bot/pkg/domain/model"
@@ -60,15 +61,23 @@ func (f *Facade) GetRates(p *model.CurrencyPair) ([]float64, error) {
 	return f.rateRepo.GetRates(p, f.rateDuration)
 }
 
-// // GetBuyRate 買レートを取得
-// func (f *Facade) GetBuyRate(pair *model.CurrencyPair) (float64, error) {
-// 	return f.getOrderRate(pair, model.BuySide)
-// }
-//
-// // GetSellRate 売レートを取得
-// func (f *Facade) GetSellRate(pair *model.CurrencyPair) (float64, error) {
-// 	return f.getOrderRate(pair, model.SellSide)
-// }
+// GetBuyRate 買レートを取得
+func (f *Facade) GetBuyRate(pair *model.CurrencyPair) (float64, error) {
+	r, err := f.exClient.GetOrderRate(pair, model.BuySide)
+	if err != nil {
+		return 0, err
+	}
+	return r.Rate, err
+}
+
+// GetSellRate 売レートを取得
+func (f *Facade) GetSellRate(pair *model.CurrencyPair) (float64, error) {
+	r, err := f.exClient.GetOrderRate(pair, model.SellSide)
+	if err != nil {
+		return 0, err
+	}
+	return r.Rate, err
+}
 
 // // GetBuyRateHistory 買レートの遷移を取得
 // func (f *Facade) GetBuyRateHistory(pair *model.CurrencyPair) []float64 {
@@ -169,4 +178,21 @@ func (f *Facade) CancelSettleOrder(p *model.Position) (*model.Position, error) {
 func (f *Facade) GetJpyBalance() (*model.Balance, error) {
 	c := model.JPY
 	return f.exClient.GetBalance(&c)
+}
+
+// GetVolumes 取引量を取得
+func (f *Facade) GetVolumes(p *model.CurrencyPair, side model.OrderSide, d time.Duration) (float64, error) {
+	return f.exClient.GetVolumes(p, side, d)
+}
+
+func (f *Facade) Wait(ctx context.Context, interval time.Duration) error {
+	timeout, cancel := context.WithTimeout(ctx, interval)
+	defer cancel()
+
+	<-timeout.Done()
+
+	if timeout.Err() != context.Canceled && ctx.Err() != context.DeadlineExceeded {
+		return ctx.Err()
+	}
+	return nil
 }

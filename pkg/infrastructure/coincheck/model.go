@@ -1,6 +1,10 @@
 package coincheck
 
-import "time"
+import (
+	"strconv"
+	"strings"
+	"time"
+)
 
 // NewOrder 注文（新規）
 type NewOrder struct {
@@ -55,4 +59,43 @@ type Balance struct {
 	Etc  string `json:"etc"`
 	Fct  string `json:"fct"`
 	Mona string `json:"mona"`
+}
+
+// 取引履歴
+type TradeHistory struct {
+	ID     uint64
+	Pair   string
+	Rate   float64
+	Amount float64
+	Side   string
+	Time   time.Time
+}
+
+// NewTradeHistory Webソケットのメッセージから取引履歴を生成
+func NewTradeHistory(b []byte) (h *TradeHistory, err error) {
+	message := string(b)
+	message = strings.ReplaceAll(message, "[", "")
+	message = strings.ReplaceAll(message, "]", "")
+	message = strings.ReplaceAll(message, "\"", "")
+
+	values := strings.Split(message, ",")
+
+	h = &TradeHistory{}
+
+	h.ID, err = strconv.ParseUint(values[0], 10, 64)
+	if err != nil {
+		return
+	}
+	h.Pair = values[1]
+	h.Rate, err = strconv.ParseFloat(values[2], 64)
+	if err != nil {
+		return
+	}
+	h.Amount, err = strconv.ParseFloat(values[3], 64)
+	if err != nil {
+		return
+	}
+	h.Side = values[4]
+	h.Time = time.Now()
+	return
 }

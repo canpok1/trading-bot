@@ -1,8 +1,8 @@
 run:
-	scripts/run_bot.sh scalping
+	scripts/run_bot.sh inago
 
 run-logger:
-	scripts/run_bot.sh watch-only
+	scripts/run_bot.sh none
 
 test:
 	go test ./...

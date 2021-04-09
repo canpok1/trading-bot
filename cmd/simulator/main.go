@@ -81,7 +81,6 @@ func setup(logger domain.Logger, configPath string) (*usecase.Simulator, error) 
 
 	bot := usecase.NewBot(logger, facade, strategy, &usecase.BotConfig{
 		Currency:         model.CurrencyType(conf.TargetCurrency),
-		IntervalSeconds:  0,
 		PositionCountMax: conf.PositionCountMax,
 	})
 

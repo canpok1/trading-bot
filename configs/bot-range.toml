@@ -1,0 +1,10 @@
+# レンジ相場用
+interval_seconds = 10
+funds_ratio = 0.3
+
+term_size = 100
+loss_cut_lower_limit_per = 0.927
+fix_profit_upper_limit_per = 1.593
+bbands_nb_dev_up = 2.0
+bbands_nb_dev_down = 2.0
+bbands_max_width_rate = 0.01
