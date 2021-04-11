@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 	"trading-bot/pkg/domain/model"
 )
 
@@ -150,4 +151,25 @@ func (c *Client) deleteOrder(id uint64) error {
 		ID uint64 `json:"id"`
 	}
 	return c.requestWithValidation(http.MethodDelete, u, "", &res)
+}
+
+// getCancelStatus キャンセルステータス取得
+func (c *Client) getCancelStatus(id uint64) (bool, error) {
+	u, err := c.makeURL("/api/exchange/orders/cancel_status", map[string]string{
+		"id": fmt.Sprintf("%d", id),
+	})
+	if err != nil {
+		return false, err
+	}
+
+	var res struct {
+		ID        uint64    `json:"id"`
+		Cancel    bool      `json:"cancel"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	if err := c.requestWithValidation(http.MethodGet, u, "", &res); err != nil {
+		return false, err
+	}
+
+	return res.Cancel, err
 }

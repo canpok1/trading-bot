@@ -55,36 +55,36 @@ func (c *Client) GetOrderRate(p *model.CurrencyPair, s model.OrderSide) (*model.
 }
 
 // GetBalance 残高取得
-func (c *Client) GetBalance(currency *model.CurrencyType) (*model.Balance, error) {
+func (c *Client) GetBalance(currency model.CurrencyType) (*model.Balance, error) {
 	res, err := c.getAccountBalance()
 	if err != nil {
 		return nil, err
 	}
 
-	switch *currency {
+	switch currency {
 	case model.JPY:
 		return &model.Balance{
-			Currency: *currency,
+			Currency: currency,
 			Amount:   toFloat(res.Jpy, 0),
 		}, nil
 	case model.BTC:
 		return &model.Balance{
-			Currency: *currency,
+			Currency: currency,
 			Amount:   toFloat(res.Btc, 0),
 		}, nil
 	case model.ETC:
 		return &model.Balance{
-			Currency: *currency,
+			Currency: currency,
 			Amount:   toFloat(res.Etc, 0),
 		}, nil
 	case model.FCT:
 		return &model.Balance{
-			Currency: *currency,
+			Currency: currency,
 			Amount:   toFloat(res.Fct, 0),
 		}, nil
 	case model.MONA:
 		return &model.Balance{
-			Currency: *currency,
+			Currency: currency,
 			Amount:   toFloat(res.Mona, 0),
 		}, nil
 	default:
@@ -196,6 +196,11 @@ func (c *Client) PostOrder(o *model.NewOrder) (*model.Order, error) {
 // DeleteOrder 注文削除
 func (c *Client) DeleteOrder(id uint64) error {
 	return c.deleteOrder(id)
+}
+
+// GetCancelStatus キャンセルステータス取得
+func (c *Client) GetCancelStatus(id uint64) (bool, error) {
+	return c.getCancelStatus(id)
 }
 
 // GetVolumes 取引量を取得

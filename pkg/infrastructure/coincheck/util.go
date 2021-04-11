@@ -124,8 +124,11 @@ func toRequestString(v *float64) string {
 		return integerStr
 	}
 
-	// 小数含めて全体で5桁にする
+	// 小数含めて全体で5桁（ドット含め6文字）にする
 	s := fmt.Sprintf("%.5f", *v)
+	if len(s) < 6 {
+		return s
+	}
 	return s[:6]
 }
 

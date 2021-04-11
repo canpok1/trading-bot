@@ -9,6 +9,13 @@ type Config struct {
 	DB                     DB       `required:"true"`
 }
 
+func (c *Config) GetTargetPair(Settlement CurrencyType) *CurrencyPair {
+	return &CurrencyPair{
+		Key:        CurrencyType(c.TargetCurrency),
+		Settlement: Settlement,
+	}
+}
+
 // Exchange 取引所向け設定
 type Exchange struct {
 	AccessKey string `required:"true" split_words:"true"`

@@ -101,9 +101,9 @@ func (e *ExchangeMock) GetOrderRate(p *model.CurrencyPair, side model.OrderSide)
 }
 
 // GetBalance 残高を取得
-func (e *ExchangeMock) GetBalance(currency *model.CurrencyType) (*model.Balance, error) {
+func (e *ExchangeMock) GetBalance(currency model.CurrencyType) (*model.Balance, error) {
 	return &model.Balance{
-		Currency: *currency,
+		Currency: currency,
 		Amount:   100000,
 	}, nil
 }

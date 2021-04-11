@@ -176,8 +176,7 @@ func (f *Facade) CancelSettleOrder(p *model.Position) (*model.Position, error) {
 
 // GetJpyBalance 日本円の残高を取得
 func (f *Facade) GetJpyBalance() (*model.Balance, error) {
-	c := model.JPY
-	return f.exClient.GetBalance(&c)
+	return f.exClient.GetBalance(model.JPY)
 }
 
 // GetVolumes 取引量を取得

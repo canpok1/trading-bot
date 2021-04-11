@@ -40,8 +40,6 @@ const (
 	Range StrategyType = "range"
 	// Inago イナゴトレード
 	Inago StrategyType = "inago"
-	// SupportLineWatch サポートライン監視
-	SupportLineWatch StrategyType = "support-line-watch"
 )
 
 // MakeStrategy 戦略を生成
@@ -74,12 +72,6 @@ func MakeStrategy(t StrategyType, facade *trade.Facade, logger domain.Logger) (S
 			return nil, err
 		}
 		return strategy.NewInagoStrategy(facade, logger, config)
-	case SupportLineWatch:
-		config, err := strategy.NewSupportLineWatchConfig(p)
-		if err != nil {
-			return nil, err
-		}
-		return strategy.NewSupportLineWatchStrategy(facade, logger, config)
 	default:
 		return nil, fmt.Errorf("strategy name is unknown; name = %s", t)
 	}
