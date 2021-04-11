@@ -11,6 +11,7 @@ import (
 	"trading-bot/pkg/infrastructure/coincheck"
 	"trading-bot/pkg/infrastructure/memory"
 	"trading-bot/pkg/infrastructure/mysql"
+	"trading-bot/pkg/usecase/log"
 	"trading-bot/pkg/usecase/trade"
 
 	"github.com/kelseyhightower/envconfig"
@@ -150,7 +151,7 @@ func (b *Bot) Trade(ctx context.Context) func() error {
 				return nil
 			default:
 				if err := b.trade(ctx); err != nil {
-					b.Logger.Error("error occured, %v", err)
+					b.Logger.Error("error occured in Trade, %v", err)
 				}
 			}
 		}
@@ -221,18 +222,18 @@ func (b *Bot) tradeForSell(info *ExchangeInfo) error {
 	}
 
 	if info.BuyJPY == 0.0 {
-		b.Logger.Debug("skip sell (buy JPY:%.3f == 0)", info.BuyJPY)
+		b.Logger.Debug("skip sell (buy JPY:%s == 0.000)", log.Yellow("%.3f", info.BuyJPY))
 		return nil
 	}
 
 	if len(openOrders) > 0 {
-		b.Logger.Debug("skip sell (open order count:%d > 0)", len(openOrders))
+		b.Logger.Debug("skip sell (open order count:%s > 0)", log.Yellow("%d", len(openOrders)))
 		for _, order := range openOrders {
 			b.Logger.Debug("open order => [%s rate:%.3f, amount:%.3f]", order.Type, *order.Rate, order.Amount)
 		}
 		return nil
 	}
-	b.Logger.Debug("should sell (open order count:%d == 0)", len(openOrders))
+	b.Logger.Debug("%s (open order count:%s == 0)", log.Green("should sell"), log.Yellow("%d", len(openOrders)))
 
 	// 指値売り
 	newInfo, err := b.getExchangeInfo(info.Pair)
@@ -290,7 +291,7 @@ func (b *Bot) shouldBuy(info *ExchangeInfo) (bool, error) {
 	}
 	required := b.Config.SupportLinePeriod1 + b.Config.SupportLinePeriod2
 	if len(rates) < required {
-		b.Logger.Debug("skip buy (rate len:%d < SupportLine required:%d)", len(rates), required)
+		b.Logger.Debug("skip buy (rate len:%s < SupportLine required:%d)", log.Yellow("%d", len(rates)), required)
 		return false, nil
 	}
 
@@ -299,16 +300,16 @@ func (b *Bot) shouldBuy(info *ExchangeInfo) (bool, error) {
 	supportLine := supportLines[len(supportLines)-1]
 	supportLineCrossed := info.SellRate < supportLine
 	if supportLineCrossed {
-		b.Logger.Debug("\x1b[32msupport line crossed\x1b[0m (sell:%.3f < support:%.3f)", info.SellRate, supportLine)
+		b.Logger.Debug("%s support line crossed (sell:%s < support:%s)", log.Green("OK"), log.Yellow("%.3f", info.SellRate), log.Yellow("%.3f", supportLine))
 	} else {
-		b.Logger.Debug("\x1b[31msupport line not crossed\x1b[0m (sell:%.3f >= support:%.3f)", info.SellRate, supportLine)
+		b.Logger.Debug("%s support line not crossed (sell:%s >= support:%s)", log.Red("NG"), log.Yellow("%.3f", info.SellRate), log.Yellow("%.3f", supportLine))
 	}
 
 	// 前注文よりレート下？
 	averagingDown := false
 	averagingDownLittle := false
 	if info.BuyCurrencyAmount == 0.0 {
-		b.Logger.Debug("\x1b[32mcan averaging down\x1b[0m (%s: nothing)", info.Pair.Key)
+		b.Logger.Debug("%s can averaging down (%s: nothing)", log.Green("OK"), info.Pair.Key)
 		averagingDown = true
 		averagingDownLittle = true
 	} else {
@@ -317,11 +318,11 @@ func (b *Bot) shouldBuy(info *ExchangeInfo) (bool, error) {
 		averagingDown = info.BuyRate < border
 		averagingDownLittle = info.BuyRate < orderRateAVG
 		if averagingDown {
-			b.Logger.Debug("\x1b[32mcan averaging down\x1b[0m (buyRate:%.3f<border:%.3f)", info.BuyRate, border)
+			b.Logger.Debug("%s can averaging down (buyRate:%s < border:%s)", log.Green("OK"), log.Yellow("%.3f", info.BuyRate), log.Yellow("%.3f", border))
 		} else if averagingDownLittle {
-			b.Logger.Debug("\x1b[31mcannot averaging down\x1b[0m (border:%.3f=<buyRate:%.3f<orderRateAVG:%.3f)", border, info.BuyRate, orderRateAVG)
+			b.Logger.Debug("%s cannot averaging down (border:%s =< buyRate:%s < AVG:%s)", log.Red("NG"), log.Yellow("%.3f", border), log.Yellow("%.3f", info.BuyRate), log.Yellow("%.3f", orderRateAVG))
 		} else {
-			b.Logger.Debug("\x1b[31mcannot averaging down\x1b[0m (buyRate:%.3f>=border:%.3f)", info.BuyRate, border)
+			b.Logger.Debug("%s cannot averaging down (buyRate:%s >= border:%s)", log.Red("NG"), log.Yellow("%.3f", info.BuyRate), log.Yellow("%.3f", border))
 		}
 	}
 
@@ -330,25 +331,26 @@ func (b *Bot) shouldBuy(info *ExchangeInfo) (bool, error) {
 	borderJPY := totalJPY * b.Config.FundsRatio
 	canOrder := info.BuyJPY < borderJPY
 	if canOrder {
-		b.Logger.Debug("\x1b[32mcan order\x1b[0m (buyAmount JPY:%.3f<border:%.3f)", info.BuyJPY, borderJPY)
+		b.Logger.Debug("%s can order (buyAmount JPY:%s < border:%s)", log.Green("OK"), log.Yellow("%.3f", info.BuyJPY), log.Yellow("%.3f", borderJPY))
 	} else {
-		b.Logger.Debug("\x1b[31mcannot order\x1b[0m (buyAmount JPY:%.3f>=border:%.3f)", info.BuyJPY, borderJPY)
+		b.Logger.Debug("%s cannot order (buyAmount JPY:%s >= border:%s)", log.Red("NG"), log.Yellow("%.3f", info.BuyJPY), log.Yellow("%.3f", borderJPY))
 	}
 
 	if !supportLineCrossed || !averagingDown || !canOrder {
 		b.Logger.Debug("skip buy (supportLineCrossed:%v, averagingDown:%v, canOrder:%v)", supportLineCrossed, averagingDown, canOrder)
 
-		newStandby := canOrder && averagingDownLittle
+		hasPosition := info.BuyCurrencyAmount > 0
+		newStandby := hasPosition && averagingDownLittle && canOrder
 		if !b.buyStandby && newStandby {
-			b.Logger.Debug("set buyStandby (canOrder:%v, averagingDownLittle:%v)", canOrder, averagingDown)
+			b.Logger.Debug("%s (hasPosition:%v,averagingDownLittle:%v,canOrder:%v)", log.Green("set buyStandby"), hasPosition, averagingDownLittle, canOrder)
 		} else if b.buyStandby && !newStandby {
-			b.Logger.Debug("release buyStandby (canOrder:%v, averagingDownLittle:%v)", canOrder, averagingDown)
+			b.Logger.Debug("%s (hasPosition:%v,averagingDownLittle:%v,canOrder:%v)", log.Green("release buyStandby"), hasPosition, averagingDownLittle, canOrder)
 		}
 		b.buyStandby = newStandby
 
 		return false, nil
 	}
-	b.Logger.Debug("should buy (supportLineCrossed:%v, averagingDown:%v, canOrder:%v)", supportLineCrossed, averagingDown, canOrder)
+	b.Logger.Debug("%s (supportLineCrossed:%v, averagingDown:%v, canOrder:%v)", log.Green("should buy"), supportLineCrossed, averagingDown, canOrder)
 	return true, nil
 }
 
@@ -367,6 +369,7 @@ func (b *Bot) buyAndWaitForContract(pair *model.CurrencyPair, totalJPY float64) 
 	if err != nil {
 		return err
 	}
+	b.Logger.Debug(log.Green("completed!!![id:%d,%.3f]", order.ID, order.Amount))
 
 	b.Logger.Debug("wait for contract[id:%d]...", order.ID)
 	// 約定を待つ
@@ -377,7 +380,7 @@ func (b *Bot) buyAndWaitForContract(pair *model.CurrencyPair, totalJPY float64) 
 		}
 		for _, c := range cc {
 			if c.OrderID == order.ID {
-				b.Logger.Debug("contracted!!![id:%d]", order.ID)
+				b.Logger.Debug(log.Green("contracted!!![id:%d]", order.ID))
 				b.buyStandby = false
 				return nil
 			}
@@ -431,7 +434,7 @@ func (b *Bot) sell(info *ExchangeInfo) error {
 			info.BuyCurrencyAmount,
 			err)
 	}
-	b.Logger.Debug("completed!!![id:%d,%.3f,%.3f]", order.ID, *order.Rate, order.Amount)
+	b.Logger.Debug(log.Green("completed!!![id:%d,%.3f,%.3f]", order.ID, *order.Rate, order.Amount))
 	return nil
 }
 
@@ -446,7 +449,7 @@ func (b *Bot) WatchTrade(ctx context.Context) func() error {
 			default:
 				if err := b.CoincheckCli.SubscribeTradeHistory(ctx, pair, b.receiveTrade); err != nil {
 					if !strings.Contains(err.Error(), "i/o timeout") {
-						b.Logger.Error("error occured, %v", err)
+						b.Logger.Error("error occured in WatchTrade, %v", err)
 					}
 				}
 			}
@@ -465,7 +468,7 @@ func (b *Bot) receiveTrade(side model.OrderSide, rate float64) error {
 		return err
 	}
 	if v > b.Config.MaxVolume {
-		b.Logger.Debug("[receive] set buyStandby (sell volume:%.3f > max:%.3f)", v, b.Config.MaxVolume)
+		b.Logger.Debug("[receive] %s (sell volume:%.3f > max:%.3f)", log.Green("set buyStandby"), v, b.Config.MaxVolume)
 		b.buyStandby = true
 	} else {
 		b.Logger.Debug("[receive] skip set buyStandby (sell volume:%.3f <= max:%.3f)", v, b.Config.MaxVolume)
