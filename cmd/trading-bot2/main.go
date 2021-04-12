@@ -233,7 +233,7 @@ func (b *Bot) tradeForSell(info *ExchangeInfo) error {
 		}
 		return nil
 	}
-	b.Logger.Debug("%s (open order count:%s == 0)", log.Green("should sell"), log.Yellow("%d", len(openOrders)))
+	b.Logger.Debug("%s (open order count:%s == 0)", "should sell", log.Yellow("%d", len(openOrders)))
 
 	// 指値売り
 	newInfo, err := b.getExchangeInfo(info.Pair)
@@ -260,8 +260,8 @@ func (b *Bot) getExchangeInfo(pair *model.CurrencyPair) (*ExchangeInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	buyContracts := trade.GetLastBuyContracts(&sellRate.Pair, contracts)
 
+	buyContracts := trade.GetLastBuyContracts(&sellRate.Pair, contracts)
 	buyJPY := 0.0
 	buyCurrencyAmount := 0.0
 	for _, c := range buyContracts {
@@ -272,6 +272,16 @@ func (b *Bot) getExchangeInfo(pair *model.CurrencyPair) (*ExchangeInfo, error) {
 	balanceJPY, err := b.CoincheckCli.GetBalance(model.JPY)
 	if err != nil {
 		return nil, err
+	}
+
+	{
+		// テスト用
+		keyBalance, err := b.CoincheckCli.GetBalance(pair.Key)
+		if err != nil {
+			return nil, err
+		}
+		buyJPY := trade.CalcUnsettledAmount(pair, contracts, keyBalance.Reserved+keyBalance.Amount, 1)
+		b.Logger.Debug("%s reserved:%.3f, amount:%.3f, buyJPY:%.3f", log.Cyan("test"), keyBalance.Reserved, keyBalance.Amount, buyJPY)
 	}
 
 	return &ExchangeInfo{
@@ -350,7 +360,7 @@ func (b *Bot) shouldBuy(info *ExchangeInfo) (bool, error) {
 
 		return false, nil
 	}
-	b.Logger.Debug("%s (supportLineCrossed:%v, averagingDown:%v, canOrder:%v)", log.Green("should buy"), supportLineCrossed, averagingDown, canOrder)
+	b.Logger.Debug("%s (supportLineCrossed:%v, averagingDown:%v, canOrder:%v)", "should buy", supportLineCrossed, averagingDown, canOrder)
 	return true, nil
 }
 

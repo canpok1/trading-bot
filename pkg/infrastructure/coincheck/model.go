@@ -54,11 +54,16 @@ type OrderTransaction struct {
 
 // Balance 残高
 type Balance struct {
-	Jpy  string `json:"jpy"`
-	Btc  string `json:"btc"`
-	Etc  string `json:"etc"`
-	Fct  string `json:"fct"`
-	Mona string `json:"mona"`
+	Jpy          string `json:"jpy"`
+	Btc          string `json:"btc"`
+	Etc          string `json:"etc"`
+	Fct          string `json:"fct"`
+	Mona         string `json:"mona"`
+	JpyReserved  string `json:"jpy_reserved"`
+	BtcReserved  string `json:"btc_reserved"`
+	EtcReserved  string `json:"etc_reserved"`
+	FctReserved  string `json:"fct_reserved"`
+	MonaReserved string `json:"mona_reserved"`
 }
 
 // 取引履歴

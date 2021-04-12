@@ -56,6 +56,7 @@ type OrderRate struct {
 type Balance struct {
 	Currency CurrencyType
 	Amount   float64
+	Reserved float64
 }
 
 // NewOrder 新規注文

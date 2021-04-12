@@ -63,3 +63,28 @@ func GetLastBuyContracts(pair *model.CurrencyPair, cc []model.Contract) []model.
 	}
 	return buyContracts
 }
+
+// CalcUnsettledAmount 未決済分の購入金額を算出
+func CalcUnsettledAmount(pair *model.CurrencyPair, cc []model.Contract, keyAmount, fraction float64) float64 {
+	answer := 0.0
+	tmp := keyAmount
+	for _, c := range cc {
+		if tmp < fraction {
+			break
+		}
+		if c.DecreaseCurrency == pair.Settlement && c.IncreaseCurrency == pair.Key {
+			// 買い注文
+			answer -= c.DecreaseAmount
+			tmp -= c.IncreaseAmount
+			continue
+		}
+		if c.DecreaseCurrency == pair.Settlement && c.IncreaseCurrency == pair.Key {
+			// 売り注文
+			answer -= c.IncreaseAmount
+			tmp -= c.DecreaseAmount
+			continue
+		}
+	}
+
+	return answer
+}

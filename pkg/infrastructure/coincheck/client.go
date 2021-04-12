@@ -66,26 +66,31 @@ func (c *Client) GetBalance(currency model.CurrencyType) (*model.Balance, error)
 		return &model.Balance{
 			Currency: currency,
 			Amount:   toFloat(res.Jpy, 0),
+			Reserved: toFloat(res.JpyReserved, 0),
 		}, nil
 	case model.BTC:
 		return &model.Balance{
 			Currency: currency,
 			Amount:   toFloat(res.Btc, 0),
+			Reserved: toFloat(res.BtcReserved, 0),
 		}, nil
 	case model.ETC:
 		return &model.Balance{
 			Currency: currency,
 			Amount:   toFloat(res.Etc, 0),
+			Reserved: toFloat(res.EtcReserved, 0),
 		}, nil
 	case model.FCT:
 		return &model.Balance{
 			Currency: currency,
 			Amount:   toFloat(res.Fct, 0),
+			Reserved: toFloat(res.FctReserved, 0),
 		}, nil
 	case model.MONA:
 		return &model.Balance{
 			Currency: currency,
 			Amount:   toFloat(res.Mona, 0),
+			Reserved: toFloat(res.MonaReserved, 0),
 		}, nil
 	default:
 		return nil, fmt.Errorf("failed to get balance, unknown ")
