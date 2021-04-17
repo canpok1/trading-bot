@@ -28,7 +28,7 @@ func MinRate(rates []float64) (float64, int) {
 	return min, minIndex
 }
 
-func SupportLine(rates []float64, term1, term2 int) []float64 {
+func SupportLine(rates []float64, term1, term2 int) ([]float64, float64) {
 	term1End := len(rates) - 1
 	term1Begin := term1End - (term1 - 1)
 	term1Min, term1MinIdx := MinRate(rates[term1Begin : term1End-1])
@@ -47,7 +47,7 @@ func SupportLine(rates []float64, term1, term2 int) []float64 {
 		supportLine = append(supportLine, float64(x)*a+b)
 	}
 
-	return supportLine
+	return supportLine, a
 }
 
 func GetLastBuyContracts(pair *model.CurrencyPair, cc []model.Contract) []model.Contract {
@@ -64,9 +64,8 @@ func GetLastBuyContracts(pair *model.CurrencyPair, cc []model.Contract) []model.
 	return buyContracts
 }
 
-// CalcUnsettledAmount 未決済分の購入金額を算出
-func CalcUnsettledAmount(pair *model.CurrencyPair, cc []model.Contract, keyAmount, fraction float64) float64 {
-	answer := 0.0
+// CalcAmount 未決済分の購入金額を算出
+func CalcAmount(pair *model.CurrencyPair, cc []model.Contract, keyAmount, fraction float64) (usedJPY float64, obtainedCurrency float64) {
 	tmp := keyAmount
 	for _, c := range cc {
 		if tmp < fraction {
@@ -74,17 +73,19 @@ func CalcUnsettledAmount(pair *model.CurrencyPair, cc []model.Contract, keyAmoun
 		}
 		if c.DecreaseCurrency == pair.Settlement && c.IncreaseCurrency == pair.Key {
 			// 買い注文
-			answer -= c.DecreaseAmount
+			usedJPY -= c.DecreaseAmount
+			obtainedCurrency += c.IncreaseAmount
 			tmp -= c.IncreaseAmount
 			continue
 		}
 		if c.DecreaseCurrency == pair.Settlement && c.IncreaseCurrency == pair.Key {
 			// 売り注文
-			answer -= c.IncreaseAmount
+			usedJPY -= c.IncreaseAmount
+			obtainedCurrency += c.DecreaseAmount
 			tmp -= c.DecreaseAmount
 			continue
 		}
 	}
 
-	return answer
+	return
 }
