@@ -1,6 +1,9 @@
 package memory
 
-import "log"
+import (
+	"log"
+	"trading-bot/pkg/domain"
+)
 
 const (
 	Debug = iota
@@ -30,5 +33,7 @@ func (l *Logger) Error(format string, v ...interface{}) {
 	if l.Level > Error {
 		return
 	}
-	log.Printf("[ERROR] "+format, v...)
+	level := domain.Red("[ERROR]")
+
+	log.Printf(level+format, v...)
 }

@@ -19,7 +19,7 @@ type Client struct {
 
 // NewClient MySQL用クライアントの生成
 func NewClient(userName, password, dbHost string, dbPort int, dbName string) *Client {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8&parseTime=True&loc=Local", userName, password, dbHost, dbPort, dbName)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8&%s", userName, password, dbHost, dbPort, dbName, "parseTime=True")
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
@@ -323,16 +323,16 @@ func (c *Client) GetRate(p *model.CurrencyPair) (float64, error) {
 
 // GetRates レート取得
 func (c *Client) GetRates(p *model.CurrencyPair, d *time.Duration) (rates []float64, err error) {
-	var rr []Rate
+	var rr []Market
 	if d == nil {
 		err = c.db.
-			Where("currency = ?", p.String()).
+			Where("pair = ?", p.String()).
 			Order("recorded_at").Find(&rr).
 			Error
 	} else {
 		begin := time.Now().Add(-1 * *d)
 		err = c.db.
-			Where("recorded_at > ? AND currency = ?", begin, p.String()).
+			Where("recorded_at > ? AND pair = ?", begin, p.String()).
 			Order("recorded_at").Find(&rr).
 			Error
 	}
@@ -342,8 +342,96 @@ func (c *Client) GetRates(p *model.CurrencyPair, d *time.Duration) (rates []floa
 
 	rates = []float64{}
 	for _, r := range rr {
-		rates = append(rates, r.Rate)
+		rates = append(rates, r.ExRateSell)
 	}
 
 	return rates, nil
+}
+
+// AddMarket 市場情報を追加
+func (c *Client) AddMarket(info *Market) error {
+	return c.db.Create(&info).Error
+}
+
+// GetMarkets
+func (c *Client) GetMarkets(p *model.CurrencyPair, d *time.Duration) (markets []Market, err error) {
+	if d == nil {
+		err = c.db.
+			Where("pair = ?", p.String()).
+			Order("recorded_at").Find(&markets).
+			Error
+	} else {
+		begin := time.Now().Add(-1 * *d)
+		err = c.db.
+			Where("recorded_at > ? AND pair = ?", begin, p.String()).
+			Order("recorded_at").Find(&markets).
+			Error
+	}
+	return
+}
+
+// AddEvent イベント情報を追加
+func (c *Client) AddEvent(e *Event) error {
+	return c.db.Create(&e).Error
+}
+
+// GetEvents
+func (c *Client) GetEvents(p *model.CurrencyPair, d *time.Duration) (events []Event, err error) {
+	if d == nil {
+		err = c.db.
+			Where("pair = ?", p.String()).
+			Order("recorded_at").Find(&events).
+			Error
+	} else {
+		begin := time.Now().Add(-1 * *d)
+		err = c.db.
+			Where("recorded_at > ? AND pair = ?", begin, p.String()).
+			Order("recorded_at").Find(&events).
+			Error
+	}
+	return
+}
+
+// GetAccountInfo
+func (c *Client) GetAccountInfo(t AccocuntInfoType) (v float64, err error) {
+	r := AccountInfo{}
+	err = c.db.Where("type = ?", string(t)).Find(&r).Error
+	if err != nil {
+		return 0, err
+	}
+	return r.Value, nil
+}
+
+// UpsertAccountInfo
+func (c *Client) UpsertAccountInfo(t AccocuntInfoType, v float64) error {
+	r := AccountInfo{
+		Type:  string(t),
+		Value: v,
+	}
+	return c.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&r).Error
+}
+
+// GetBotStatusAll
+func (c *Client) GetBotStatusAll() (map[string]float64, error) {
+	m := map[string]float64{}
+
+	rr := []BotStatus{}
+	err := c.db.Find(&rr).Error
+	if err != nil {
+		return m, err
+	}
+
+	for _, r := range rr {
+		m[r.Type] = r.Value
+	}
+
+	return m, nil
+}
+
+// UpsertBotInfo
+func (c *Client) UpsertBotStatuses(statuses []BotStatus) error {
+	if len(statuses) == 0 {
+		return nil
+	}
+	return c.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&statuses).Error
 }

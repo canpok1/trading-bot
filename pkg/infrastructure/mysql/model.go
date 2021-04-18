@@ -127,3 +127,56 @@ type Rate struct {
 func round(v float64) float64 {
 	return float64(int(v*10000)) / 10000
 }
+
+// Market 市場情報
+type Market struct {
+	ID           uint64
+	Pair         string
+	StoreRateAVG float64
+	ExRateSell   float64
+	ExRateBuy    float64
+	ExVolumeSell float64
+	ExVolumeBuy  float64
+	RecordedAt   time.Time
+}
+
+// Event イベント
+type Event struct {
+	ID         uint64
+	Pair       string
+	EventType  int
+	Memo       string
+	RecordedAt time.Time
+}
+
+const (
+	BuyEvent  = 0
+	SellEvent = 1
+)
+
+// AccountInfo アカウント情報
+type AccountInfo struct {
+	Type  string
+	Value float64
+}
+
+func (AccountInfo) TableName() string {
+	return "account_info"
+}
+
+type AccocuntInfoType string
+
+const (
+	AccountInfoTypeTotalJPY AccocuntInfoType = "total_jpy"
+)
+
+// BotInfo ボット情報
+type BotStatus struct {
+	Type  string
+	Value float64
+	Memo  string
+}
+
+func (BotStatus) TableName() string {
+	return "bot_statuses"
+}

@@ -7,6 +7,9 @@ run2:
 run-logger:
 	scripts/run_bot.sh none
 
+run-monitor:
+	scripts/run_monitor.sh
+
 test:
 	go test ./...
 
