@@ -154,7 +154,11 @@ func (e *ExchangeInfo) CalcTotalBalanceJPY() float64 {
 
 // CalcUsedJPY コイン購入に使用したJPY（未約定分は除外）
 func (e *ExchangeInfo) CalcUsedJPY() float64 {
-	return e.TotalJPY - e.BalanceJPY.Amount
+	usedJPY := e.TotalJPY - e.BalanceJPY.Amount
+	if usedJPY < 0 {
+		return 0
+	}
+	return usedJPY
 }
 
 type Bot struct {
@@ -281,15 +285,17 @@ func (b *Bot) tradeForSell(info *ExchangeInfo) error {
 		return err
 	}
 
-	if info.BalanceCurrency.Amount+info.BalanceCurrency.Reserved <= 0.000 {
-		b.Logger.Debug(
-			"skip sell (%s:%.3f == 0.000)",
-			info.Pair.Key, domain.Yellow("%.3f", info.BalanceCurrency.Amount+info.BalanceCurrency.Reserved))
-		return nil
-	}
-
 	botStatus := mysql.BotStatus{
 		Type: "sell_rate", Value: -1, Memo: "約定待ちの売注文レート",
+	}
+
+	currencyAmount := info.BalanceCurrency.Amount + info.BalanceCurrency.Reserved
+	if currencyAmount*info.SellRate <= 1 {
+		b.Logger.Debug(
+			"skip sell (%s:%s == 0.000)",
+			info.Pair.Key, domain.Yellow("%.3f", info.BalanceCurrency.Amount+info.BalanceCurrency.Reserved))
+		b.botStatuses = append(b.botStatuses, botStatus)
+		return nil
 	}
 
 	if len(openOrders) > 0 {
@@ -368,12 +374,14 @@ func (b *Bot) getExchangeInfo(pair *model.CurrencyPair) (*ExchangeInfo, error) {
 }
 
 func (b *Bot) updateAccountInfo(info *ExchangeInfo) error {
-	if info.BalanceCurrency.Amount > 0 {
+	if (info.BalanceCurrency.Amount+info.BalanceCurrency.Reserved)*info.SellRate >= 1.0 {
 		return nil
 	}
 	if info.TotalJPY == info.BalanceJPY.Amount {
 		return nil
 	}
+	info.TotalJPY = info.BalanceJPY.Amount
+
 	return b.MysqlCli.UpsertAccountInfo(mysql.AccountInfoTypeTotalJPY, info.BalanceJPY.Amount)
 }
 
@@ -414,8 +422,8 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, error) {
 	averagingDown := false
 	averagingDownLittle := false
 	obtainedCurrency := info.BalanceCurrency.Amount + info.BalanceCurrency.Reserved
-	if obtainedCurrency == 0.0 {
-		b.Logger.Debug("%s can averaging down (%s: nothing)", domain.Green("OK"), info.Pair.Key)
+	if obtainedCurrency*info.SellRate < 1 {
+		b.Logger.Debug("%s can averaging down (%s:%.3f is very few)", domain.Green("OK"), info.Pair.Key, obtainedCurrency)
 		averagingDown = true
 		averagingDownLittle = true
 	} else {
@@ -569,8 +577,9 @@ func (b *Bot) cancel(orders []model.Order) error {
 }
 
 func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo) (rate float64, amount float64, err error) {
-	profit := info.TotalJPY * b.Config.TargetProfitPer
-	rate = (info.CalcUsedJPY() + profit) / info.BalanceCurrency.Amount
+	usedJPY := info.CalcUsedJPY()
+	profit := usedJPY * b.Config.TargetProfitPer
+	rate = (usedJPY + profit) / info.BalanceCurrency.Amount
 	amount = info.BalanceCurrency.Amount
 
 	return
