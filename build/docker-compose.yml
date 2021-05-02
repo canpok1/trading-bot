@@ -41,7 +41,7 @@ services:
       # Bot設定
       BOT_TARGET_CURRENCY: mona
       BOT_INTERVAL_SECONDS: 60
-      BOT_DEMO_MODE: false
+      BOT_DEMO_MODE: "false"
       BOT_TREND_LINE_PERIOD: 150
       BOT_TREND_LINE_OFFSET: 5
       BOT_ENTRY_AREA_WIDTH: 0.005
