@@ -65,6 +65,7 @@ func main() {
 	errGroup.Go(bot.Fetch(ctx))
 	errGroup.Go(bot.Trade(ctx))
 	errGroup.Go(bot.WatchTrade(ctx))
+	errGroup.Go(bot.ReceiveTradeHandler(ctx))
 	errGroup.Go(func() error {
 		defer cancel()
 		return watchSignal(ctx, &logger)
@@ -194,11 +195,14 @@ type Bot struct {
 	Logger       *memory.Logger
 	SlackCli     *slack.Client
 
-	buyStandby      bool
-	skipEndTime     *time.Time
-	botStatuses     []mysql.BotStatus
+	buyStandby  bool
+	skipEndTime *time.Time
+	botStatuses []mysql.BotStatus
+
 	sellVolumeCache sync.Map
 	buyVolumeCache  sync.Map
+	sellVolumeChan  chan *coincheck.TradeHistory
+	buyVolumeChan   chan *coincheck.TradeHistory
 }
 
 func NewBot(config *BotConfig, coincheckCli *coincheck.Client, mysqlCli *mysql.Client, logger *memory.Logger, slackCli *slack.Client) *Bot {
@@ -213,6 +217,8 @@ func NewBot(config *BotConfig, coincheckCli *coincheck.Client, mysqlCli *mysql.C
 		botStatuses:     []mysql.BotStatus{},
 		sellVolumeCache: sync.Map{},
 		buyVolumeCache:  sync.Map{},
+		sellVolumeChan:  make(chan *coincheck.TradeHistory),
+		buyVolumeChan:   make(chan *coincheck.TradeHistory),
 	}
 }
 
@@ -896,51 +902,67 @@ func (b *Bot) WatchTrade(ctx context.Context) func() error {
 }
 
 func (b *Bot) receiveTrade(h *coincheck.TradeHistory) error {
-	d := time.Duration(b.Config.VolumeCheckSeconds) * time.Second
-	v, err := b.CoincheckCli.GetVolumes(b.Config.GetTargetPair(model.JPY), h.Side, d)
-	if err != nil {
-		return err
-	}
-
-	key := time.Now().Format(volumeKey)
-
 	if h.Side == model.BuySide {
-		if v > b.Config.BuyMaxVolume {
-			b.Logger.Debug("[receive] %s (buy volume:%.3f > max:%.3f)", domain.Red("record soaredTime"), v, b.Config.BuyMaxVolume)
-			b.setSkipEndTime(time.Now().Add(time.Duration(b.Config.SoaredWarningPeriodSeconds) * time.Second))
-		} else {
-			b.Logger.Debug("[receive] skip record soaredTime (buy volume:%.3f <= max:%.3f)", v, b.Config.BuyMaxVolume)
-		}
+		b.buyVolumeChan <- h
+	} else {
+		b.sellVolumeChan <- h
+	}
+	return nil
+}
 
-		total := 0.0
-		if v1, ok := b.buyVolumeCache.Load(key); ok {
-			if v2, ok := v1.(float64); ok {
-				total = v2
+func (b *Bot) ReceiveTradeHandler(ctx context.Context) func() error {
+	return func() error {
+		d := time.Duration(b.Config.VolumeCheckSeconds) * time.Second
+		key := time.Now().Format(volumeKey)
+		for {
+			select {
+			case h := <-b.sellVolumeChan:
+				v, err := b.CoincheckCli.GetVolumes(b.Config.GetTargetPair(model.JPY), h.Side, d)
+				if err != nil {
+					return err
+				}
+				if v > b.Config.SellMaxVolume {
+					b.Logger.Debug("[receive] %s (sell volume:%.3f > max:%.3f)", domain.Green("set buyStandby"), v, b.Config.SellMaxVolume)
+					b.buyStandby = true
+					// 警戒期間をクリア
+					b.setSkipEndTime(time.Now())
+				} else {
+					b.Logger.Debug("[receive] skip set buyStandby (sell volume:%.3f <= max:%.3f)", v, b.Config.SellMaxVolume)
+				}
+
+				total := 0.0
+				if v1, ok := b.sellVolumeCache.Load(key); ok {
+					if v2, ok := v1.(float64); ok {
+						total = v2
+					}
+				}
+				b.sellVolumeCache.Store(key, total+h.Amount)
+			case h := <-b.buyVolumeChan:
+				v, err := b.CoincheckCli.GetVolumes(b.Config.GetTargetPair(model.JPY), h.Side, d)
+				if err != nil {
+					return err
+				}
+				if v > b.Config.BuyMaxVolume {
+					b.Logger.Debug("[receive] %s (buy volume:%.3f > max:%.3f)", domain.Red("record soaredTime"), v, b.Config.BuyMaxVolume)
+					b.setSkipEndTime(time.Now().Add(time.Duration(b.Config.SoaredWarningPeriodSeconds) * time.Second))
+				} else {
+					b.Logger.Debug("[receive] skip record soaredTime (buy volume:%.3f <= max:%.3f)", v, b.Config.BuyMaxVolume)
+				}
+
+				total := 0.0
+				if v1, ok := b.buyVolumeCache.Load(key); ok {
+					if v2, ok := v1.(float64); ok {
+						total = v2
+					}
+				}
+				b.buyVolumeCache.Store(key, total+h.Amount)
+			case <-ctx.Done():
+				close(b.sellVolumeChan)
+				close(b.buyVolumeChan)
+				return nil
 			}
 		}
-		b.buyVolumeCache.Store(key, total+h.Amount)
-
-		return nil
 	}
-
-	if v > b.Config.SellMaxVolume {
-		b.Logger.Debug("[receive] %s (sell volume:%.3f > max:%.3f)", domain.Green("set buyStandby"), v, b.Config.SellMaxVolume)
-		b.buyStandby = true
-		// 警戒期間をクリア
-		b.setSkipEndTime(time.Now())
-	} else {
-		b.Logger.Debug("[receive] skip set buyStandby (sell volume:%.3f <= max:%.3f)", v, b.Config.SellMaxVolume)
-	}
-
-	total := 0.0
-	if v1, ok := b.sellVolumeCache.Load(key); ok {
-		if v2, ok := v1.(float64); ok {
-			total = v2
-		}
-	}
-	b.sellVolumeCache.Store(key, total+h.Amount)
-
-	return nil
 }
 
 func (b *Bot) wait(ctx context.Context) error {
