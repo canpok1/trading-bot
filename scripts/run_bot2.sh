@@ -3,6 +3,7 @@ cd $(dirname $0)/../
 
 export BOT_TARGET_CURRENCY=mona
 export BOT_INTERVAL_SECONDS=60
+export BOT_DEMO_MODE=true
 
 export BOT_TREND_LINE_PERIOD=150
 export BOT_TREND_LINE_OFFSET=5

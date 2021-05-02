@@ -52,6 +52,7 @@ func main() {
 
 	logger.Info("currency: %s\n", config.TargetCurrency)
 	logger.Info("interval: %d sec\n", config.IntervalSeconds)
+	logger.Info("demo mode: %v\n", config.DemoMode)
 	logger.Info("======================================")
 
 	coincheckCli := coincheck.NewClient(&logger, config.Exchange.AccessKey, config.Exchange.SecretKey)
@@ -101,6 +102,8 @@ type BotConfig struct {
 	DB model.DB `required:"true" split_words:"true"`
 	// SlackのIncomingWebhookのURL
 	SlackURL string `required:"true" split_words:"true"`
+	// デモモード（注文やSlack通知を送信しない）
+	DemoMode bool `required:"true" split_words:"true"`
 
 	// ===== エントリー判断関連 =====
 	// サポートライン/レジスタンスラインの判定範囲
@@ -444,7 +447,7 @@ func (b *Bot) getExchangeInfo(pair *model.CurrencyPair) (*ExchangeInfo, error) {
 }
 
 func (b *Bot) updateAccountInfo(info *ExchangeInfo) error {
-	if info.HasPosition() {
+	if info.HasPosition() && info.TotalJPY > 0 {
 		return nil
 	}
 	if info.TotalJPY == info.BalanceJPY.Amount {
@@ -692,6 +695,14 @@ func (b *Bot) buyAndWaitForContract(pair *model.CurrencyPair, amount float64) er
 	b.Logger.Debug("======================================")
 	defer b.Logger.Debug("======================================")
 
+	if b.Config.DemoMode {
+		b.Logger.Debug(
+			"%s buy completed!!! (rate:%.3f, amount:%.3f)",
+			domain.Cyan("[DEMO]"), amount,
+		)
+		return nil
+	}
+
 	b.Logger.Debug("sending market buy order ...")
 	order, err := b.CoincheckCli.PostOrder(&model.NewOrder{
 		Type:            model.MarketBuy,
@@ -742,6 +753,10 @@ func (b *Bot) buyAndWaitForContract(pair *model.CurrencyPair, amount float64) er
 }
 
 func (b *Bot) cancel(orders []model.Order) error {
+	if b.Config.DemoMode {
+		return nil
+	}
+
 	for _, o := range orders {
 		if err := b.CoincheckCli.DeleteOrder(o.ID); err != nil {
 			return err
@@ -789,6 +804,14 @@ func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo, shouldLosscut bool) (rat
 func (b *Bot) sell(info *ExchangeInfo, rate float64, amount float64) error {
 	b.Logger.Debug("======================================")
 	defer b.Logger.Debug("======================================")
+
+	if b.Config.DemoMode {
+		b.Logger.Debug(
+			"%s sell completed!!! (rate:%.3f, amount:%.3f)",
+			domain.Cyan("[DEMO]"), rate, amount,
+		)
+		return nil
+	}
 
 	b.Logger.Debug("sending sell order ...")
 	order, err := b.CoincheckCli.PostOrder(&model.NewOrder{
