@@ -1,0 +1,17 @@
+# Build Container
+FROM golang:1.15 as builder
+WORKDIR /workspace
+COPY ./cmd/ ./cmd/
+COPY ./pkg/ ./pkg/
+COPY ./go.mod .
+COPY ./go.sum .
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+RUN go build -o monitor ./cmd/monitor/main.go
+
+# Runtime Container
+FROM alpine
+COPY --from=builder /workspace/monitor /monitor
+COPY ./web/ ./web/
+ENTRYPOINT ["/monitor"]

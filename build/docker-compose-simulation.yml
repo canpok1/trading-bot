@@ -1,0 +1,27 @@
+version: '3'
+services:
+  simulation-db:
+    image: mariadb:10.5
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: T4g5Ucs6
+      MYSQL_DATABASE: trading-bot
+      MYSQL_USER: bot
+      MYSQL_PASSWORD: P@ssw0rd
+    ports:
+      - 33060:3306
+  simulation-flyway:
+    image: flyway/flyway
+    command: -url=jdbc:mysql://simulation-db/trading-bot -user=root -password=T4g5Ucs6 -connectRetries=60 migrate
+    volumes:
+      - ./ddl:/flyway/sql
+    depends_on:
+      - simulation-db
+  metabase:
+    image: metabase/metabase:latest
+    ports:
+      - 3000:3000
+    volumes:
+      - ../data/metabase:/metabase-data
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
