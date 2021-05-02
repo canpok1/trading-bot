@@ -246,6 +246,12 @@ func (b *Bot) trade(ctx context.Context) error {
 	)
 	b.Logger.Debug("================================================================================================")
 
+	if !info.HasPosition() {
+		if err := b.MysqlCli.UpsertAccountInfo(mysql.AccountInfoTypeTotalJPY, info.CalcTotalBalanceJPY()); err != nil {
+			return err
+		}
+	}
+
 	traded, shouldLosscut, err := b.tradeForBuy(info)
 	if err != nil {
 		return err
@@ -737,8 +743,17 @@ func (b *Bot) cancel(orders []model.Order) error {
 func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo, shouldLosscut bool) (rate float64, amount float64, err error) {
 	amount = round(info.BalanceCurrency.Amount)
 
-	usedJPY := info.CalcTotalBalanceJPY() - info.BalanceJPY.Amount
-	profit := info.CalcTotalBalanceJPY() * b.Config.FundsRatioPerOrder * b.Config.TargetProfitPer
+	totalJPY, err := b.MysqlCli.GetAccountInfo(mysql.AccountInfoTypeTotalJPY)
+	if err != nil {
+		return 0, 0, err
+	}
+	if totalJPY == 0 {
+		b.Logger.Debug(domain.Red("account info %s on RDS is empty", mysql.AccountInfoTypeTotalJPY))
+		return 0, 0, nil
+	}
+
+	usedJPY := totalJPY - info.BalanceJPY.Amount
+	profit := totalJPY * b.Config.FundsRatioPerOrder * b.Config.TargetProfitPer
 	if shouldLosscut {
 		profit = 0
 	}
