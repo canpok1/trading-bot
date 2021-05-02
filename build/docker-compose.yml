@@ -9,7 +9,7 @@ services:
       MYSQL_USER: bot
       MYSQL_PASSWORD: P@ssw0rd
     volumes:
-      - ../data/db:/var/lib/mysql
+      - db-store:/var/lib/mysql
   flyway:
     image: flyway/flyway
     command: -url=jdbc:mysql://db/trading-bot -user=root -password=T4g5Ucs6 -connectRetries=60 migrate
@@ -65,3 +65,5 @@ services:
       BOT_DB_PASSWORD: P@ssw0rd
       # Slack設定
       BOT_SLACK_URL: https://xxxxxxxxxx
+volumes:
+  db-store:
