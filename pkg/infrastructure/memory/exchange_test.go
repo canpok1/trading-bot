@@ -10,11 +10,11 @@ import (
 func TestExchangeMock_NotContract_5step(t *testing.T) {
 	rates := []string{
 		"日付, 販売所買い価格, 販売所売り価格",
-		"2021-02-23 19:27:01,200.0,199.0",
-		"2021-02-23 19:27:02,200.0,199.0",
-		"2021-02-23 19:27:02,200.0,199.0",
-		"2021-02-23 19:27:02,200.0,199.0",
-		"2021-02-23 19:27:02,200.0,199.0",
+		"2021-02-23T19:27:01Z,200.0,199.0",
+		"2021-02-23T19:27:02Z,200.0,199.0",
+		"2021-02-23T19:27:02Z,200.0,199.0",
+		"2021-02-23T19:27:02Z,200.0,199.0",
+		"2021-02-23T19:27:02Z,200.0,199.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
 	mock, err := memory.NewExchangeMock(r, 0)
@@ -69,9 +69,9 @@ func TestExchangeMock_NotContract_5step(t *testing.T) {
 func TestExchangeMock_CloseBuyOrder_1step(t *testing.T) {
 	rates := []string{
 		"日付, 販売所買い価格, 販売所売り価格",
-		"2021-02-23 19:27:01,202.0,201.0",
-		"2021-02-23 19:27:02,201.0,200.0",
-		"2021-02-23 19:27:02,200.0,199.0",
+		"2021-02-23T19:27:01Z,202.0,201.0",
+		"2021-02-23T19:27:02Z,201.0,200.0",
+		"2021-02-23T19:27:02Z,200.0,199.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
 	mock, err := memory.NewExchangeMock(r, 0)
@@ -123,9 +123,9 @@ func TestExchangeMock_CloseBuyOrder_1step(t *testing.T) {
 func TestExchangeMock_CloseBuyOrder_2tep(t *testing.T) {
 	rates := []string{
 		"日付, 販売所買い価格, 販売所売り価格",
-		"2021-02-23 19:27:01,202.0,201.0",
-		"2021-02-23 19:27:02,201.0,200.0",
-		"2021-02-23 19:27:02,200.0,199.0",
+		"2021-02-23T19:27:01Z,202.0,201.0",
+		"2021-02-23T19:27:02Z,201.0,200.0",
+		"2021-02-23T19:27:02Z,200.0,199.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
 	mock, err := memory.NewExchangeMock(r, 0)
@@ -178,9 +178,9 @@ func TestExchangeMock_CloseBuyOrder_2tep(t *testing.T) {
 func TestExchangeMock_CloseSellOrder_1step(t *testing.T) {
 	rates := []string{
 		"日付, 販売所買い価格, 販売所売り価格",
-		"2021-02-23 19:27:01,200.0,199.0",
-		"2021-02-23 19:27:02,201.0,200.0",
-		"2021-02-23 19:27:02,202.0,201.0",
+		"2021-02-23T19:27:01Z,200.0,199.0",
+		"2021-02-23T19:27:02Z,201.0,200.0",
+		"2021-02-23T19:27:02Z,202.0,201.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
 	mock, err := memory.NewExchangeMock(r, 0)
@@ -232,9 +232,9 @@ func TestExchangeMock_CloseSellOrder_1step(t *testing.T) {
 func TestExchangeMock_CloseSellOrder_2step(t *testing.T) {
 	rates := []string{
 		"日付, 販売所買い価格, 販売所売り価格",
-		"2021-02-23 19:27:01,200.0,199.0",
-		"2021-02-23 19:27:02,201.0,200.0",
-		"2021-02-23 19:27:02,202.0,201.0",
+		"2021-02-23T19:27:01Z,200.0,199.0",
+		"2021-02-23T19:27:02Z,201.0,200.0",
+		"2021-02-23T19:27:02Z,202.0,201.0",
 	}
 	r := strings.NewReader(strings.Join(rates, "\n"))
 	mock, err := memory.NewExchangeMock(r, 0)

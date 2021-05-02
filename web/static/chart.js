@@ -2,7 +2,7 @@ const refreshIntervalSec = 10;
 const dataDurationMinute = 270;
 
 function init(pair) {
-    google.charts.load('current', { packages: ['corechart', 'line'] });
+    google.charts.load('current', { packages: ['corechart'] });
     google.charts.setOnLoadCallback(() => {
         draw(pair);
     });
@@ -12,87 +12,140 @@ function init(pair) {
 }
 
 async function draw(pair) {
-    console.log("draw[" + pair + "]");
+    try {
+        const baseURL = location.protocol + '//' + location.host;
 
-    const baseURL = location.protocol + '//' + location.host;
+        const botInfo = await fetchBotInfo(baseURL, pair)
 
-    const botInfo = await fetchBotInfo(baseURL, pair)
+        const hasSellOrder = botInfo.statuses.sell_rate > 0;
 
-    const hasSellOrder = botInfo.statuses.sell_rate > 0;
+        var values = [[
+            'datetime',
+            'market', { 'type': 'string', 'role': 'style' },
+            'support line',
+            'resistance line',
+            'sell volume',
+            'buy volume'
+        ]];
+        if (hasSellOrder) {
+            values[0].push('sell order')
+        }
 
-    var values = [
-        ['datetime', 'market', { 'type': 'string', 'role': 'style' }, 'support line']
-    ];
-    if (hasSellOrder) {
-        values[0].push('sell order')
-    }
+        var beforeDatetime = null;
 
-    var beforeDatetime = null;
+        // サポートライン計算用
+        var calcSupportLine = index => {
+            const a = botInfo.statuses.support_line_slope;
+            const b = botInfo.statuses.support_line_value - a * (botInfo.markets.length - 1);
+            return a * index + b
+        }
+        var calcResistanceLine = index => {
+            const a = botInfo.statuses.resistance_line_slope;
+            const b = botInfo.statuses.resistance_line_value - a * (botInfo.markets.length - 1);
+            return a * index + b
+        }
 
-    // サポートライン計算用
-    const a = botInfo.statuses.support_line_slope;
-    const b = botInfo.statuses.support_line_value - a * (botInfo.markets.length - 1);
+        var minRate = 0.0;
+        var maxRate = 0.0;
+        botInfo.markets.forEach((market, index) => {
+            var datetime = new Date(market.datetime);
 
-    botInfo.markets.forEach((market, index) => {
-        var datetime = new Date(market.datetime);
+            var bought = false;
+            var selled = false;
+            botInfo.events.forEach(e => {
+                const eventDatetime = new Date(e.datetime)
+                var matched = false;
+                if (beforeDatetime != null) {
+                    matched = beforeDatetime < eventDatetime && eventDatetime <= datetime;
+                } else {
+                    matched = eventDatetime <= datetime;
+                }
 
-        var bought = false;
-        var selled = false;
-        botInfo.events.forEach(e => {
-            const eventDatetime = new Date(e.datetime)
-            var matched = false;
-            if (beforeDatetime != null) {
-                matched = beforeDatetime < eventDatetime && eventDatetime <= datetime;
+                if (matched && e.type == 0) {
+                    bought = true;
+                }
+                if (matched && e.type == 1) {
+                    selled = true;
+                }
+            });
+
+            var point = null;
+            if (bought && selled) {
+                point = 'point {size:7;shape-type:diamond;fill-color:#ffa500;}'
+            } else if (bought) {
+                point = 'point {size:7;shape-type:diamond;fill-color:#3cb371;}'
+            } else if (selled) {
+                point = 'point {size:7;shape-type:diamond;fill-color:#dc3545;}'
+            }
+            var value = [
+                datetime,
+                market.sell_rate, point,
+                calcSupportLine(index),
+                calcResistanceLine(index),
+                market.sell_volume,
+                market.buy_volume
+            ];
+            if (hasSellOrder) {
+                value.push(botInfo.statuses.sell_rate);
+            }
+            values.push(value);
+
+            beforeDatetime = datetime;
+
+            if (index == 0) {
+                maxRate = market.sell_rate;
+                minRate = market.sell_rate;
             } else {
-                matched = eventDatetime <= datetime;
-            }
-
-            if (matched && e.type == 0) {
-                bought = true;
-            }
-            if (matched && e.type == 1) {
-                selled = true;
+                maxRate = Math.max(maxRate, market.sell_rate);
+                minRate = Math.min(minRate, market.sell_rate);
             }
         });
 
-        var point = null;
-        if (bought && selled) {
-            point = 'point {size:7;shape-type:diamond;fill-color:#ffc107;}'
-        } else if (bought) {
-            point = 'point {size:7;shape-type:diamond;fill-color:#3cb371;}'
-        } else if (selled) {
-            point = 'point {size:7;shape-type:diamond;fill-color:#dc3545;}'
-        }
-        var value = [datetime, market.sell_rate, point, a * index + b];
         if (hasSellOrder) {
-            value.push(botInfo.statuses.sell_rate);
+            maxRate = Math.max(maxRate, botInfo.statuses.sell_rate);
+            minRate = Math.min(minRate, botInfo.statuses.sell_rate);
         }
-        values.push(value);
 
-        beforeDatetime = datetime;
-    });
+        const data = new google.visualization.arrayToDataTable(values);
 
-    const data = new google.visualization.arrayToDataTable(values);
-
-    const options = {
-        hAxis: {
-            title: 'Time',
-            gridlines: {
-                units: {
-                    days: { format: ['MM/dd'] },
-                    hours: { format: ['HH:mm'] }
+        const options = {
+            hAxis: {
+                title: 'Time',
+                gridlines: {
+                    units: {
+                        days: { format: ['MM/dd'] },
+                        hours: { format: ['HH:mm'] }
+                    }
                 }
+            },
+            vAxes: {
+                0: {
+                    title: 'Rate',
+                    viewWindow: {
+                        min: minRate * 0.99,
+                        max: maxRate * 1.01
+                    }
+                },
+                1: { title: 'Volume' },
+            },
+            backgroundColor: '#f1f8e9',
+            pointSize: 1,
+            seriesType: 'line',
+            series: {
+                0: { type: 'line', targetAxisIndex: 0, color: '#000080' },    // レート
+                1: { type: 'line', targetAxisIndex: 0, color: '#ffa500' },    // サポートライン
+                2: { type: 'line', targetAxisIndex: 0, color: '#ffa500' },    // レジスタンスライン
+                3: { type: 'bars', targetAxisIndex: 1, color: '#ff0000' },    // 売り出来高
+                4: { type: 'bars', targetAxisIndex: 1, color: '#008000' },    // 買い出来高
+                5: { type: 'line', targetAxisIndex: 0, color: '#00bfff' },    // 約定待ち売レート
             }
-        },
-        vAxis: {
-            title: 'Rate'
-        },
-        backgroundColor: '#f1f8e9',
-        pointSize: 1,
-    };
+        };
 
-    const chart = new google.visualization.LineChart(document.getElementById('chart_div'));
-    chart.draw(data, options);
+        const chart = new google.visualization.ComboChart(document.getElementById('chart_div'));
+        chart.draw(data, options);
+    } catch (e) {
+        console.log(e);
+    }
 }
 
 async function fetchBotInfo(baseURL, pair) {

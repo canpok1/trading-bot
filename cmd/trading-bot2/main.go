@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"time"
 	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/model"
@@ -20,7 +21,8 @@ import (
 )
 
 const (
-	location = "Asia/Tokyo"
+	location  = "Asia/Tokyo"
+	volumeKey = "2006-01-02T15:04:00"
 )
 
 var (
@@ -100,10 +102,16 @@ type BotConfig struct {
 	SlackURL string `required:"true" split_words:"true"`
 
 	// ===== エントリー判断関連 =====
-	// サポートラインの判定範囲1（現在に近い方）
-	SupportLinePeriod1 int `required:"true" split_words:"true"`
-	// サポートラインの判定範囲2（現在から遠い方）
-	SupportLinePeriod2 int `required:"true" split_words:"true"`
+	// サポートライン/レジスタンスラインの判定範囲
+	TrendLinePeriod int `required:"true" split_words:"true"`
+	// サポートライン/レジスタンスラインのオフセット（現在からどれくらい前を見るか）
+	TrendLineOffset int `required:"true" split_words:"true"`
+
+	// エントリー判断領域の幅の割合
+	EntryAreaWidth float64 `required:"true" split_words:"true"`
+
+	// ブレークアウトしたと判断する上げ幅
+	BreakoutRatio float64 `required:"true" split_words:"true"`
 	// レートがどの程度下がったらナンピンするか
 	AveragingDownRatePer float64 `required:"true" split_words:"true"`
 	// 売最大出来高（最大を超えたら買い準備に移行）
@@ -114,6 +122,8 @@ type BotConfig struct {
 	VolumeCheckSeconds int `required:"true" split_words:"true"`
 	// 急騰を警戒する時間
 	SoaredWarningPeriodSeconds int `required:"true" split_words:"true"`
+	// 最短購入間隔
+	BuyIntervalSeconds int `required:"true" split_words:"true"`
 
 	// ===== 注文関連 =====
 	// 注文用資金
@@ -132,6 +142,7 @@ func (c *BotConfig) GetTargetPair(Settlement model.CurrencyType) *model.Currency
 }
 
 type ExchangeInfo struct {
+	// 通貨ペア
 	Pair *model.CurrencyPair
 	// 売レート
 	SellRate float64
@@ -143,6 +154,8 @@ type ExchangeInfo struct {
 	BalanceCurrency *model.Balance
 	// 資金(JPY)
 	TotalJPY float64
+	// 前回の買注文の約定レート
+	BuyOrderContractRate float64
 }
 
 // CalcTotalBalanceJPY 現レートにおける合計残高（JPY換算）
@@ -161,6 +174,19 @@ func (e *ExchangeInfo) CalcUsedJPY() float64 {
 	return usedJPY
 }
 
+// HasPosition ポジションを持っているか？
+func (e *ExchangeInfo) HasPosition() bool {
+	return e.BalanceCurrency.Total()*e.SellRate >= 1
+}
+
+// CalcOrderRateAVG 保有中コインの平均購入レート
+func (e *ExchangeInfo) CalcOrderRateAVG() float64 {
+	if !e.HasPosition() {
+		return 0
+	}
+	return e.CalcUsedJPY() / e.BalanceCurrency.Total()
+}
+
 type Bot struct {
 	Config       *BotConfig
 	CoincheckCli *coincheck.Client
@@ -168,21 +194,25 @@ type Bot struct {
 	Logger       *memory.Logger
 	SlackCli     *slack.Client
 
-	buyStandby  bool
-	soaredTime  *time.Time
-	botStatuses []mysql.BotStatus
+	buyStandby      bool
+	skipEndTime     *time.Time
+	botStatuses     []mysql.BotStatus
+	sellVolumeCache sync.Map
+	buyVolumeCache  sync.Map
 }
 
 func NewBot(config *BotConfig, coincheckCli *coincheck.Client, mysqlCli *mysql.Client, logger *memory.Logger, slackCli *slack.Client) *Bot {
 	return &Bot{
-		Config:       config,
-		CoincheckCli: coincheckCli,
-		MysqlCli:     mysqlCli,
-		Logger:       logger,
-		SlackCli:     slackCli,
-		buyStandby:   false,
-		soaredTime:   nil,
-		botStatuses:  []mysql.BotStatus{},
+		Config:          config,
+		CoincheckCli:    coincheckCli,
+		MysqlCli:        mysqlCli,
+		Logger:          logger,
+		SlackCli:        slackCli,
+		buyStandby:      false,
+		skipEndTime:     nil,
+		botStatuses:     []mysql.BotStatus{},
+		sellVolumeCache: sync.Map{},
+		buyVolumeCache:  sync.Map{},
 	}
 }
 
@@ -230,7 +260,7 @@ func (b *Bot) trade(ctx context.Context) error {
 		return err
 	}
 
-	traded, err := b.tradeForBuy(info)
+	traded, shouldLosscut, err := b.tradeForBuy(info)
 	if err != nil {
 		return err
 	}
@@ -242,7 +272,7 @@ func (b *Bot) trade(ctx context.Context) error {
 		}
 	}
 
-	if err := b.tradeForSell(info); err != nil {
+	if err := b.tradeForSell(info, shouldLosscut); err != nil {
 		return err
 	}
 
@@ -253,59 +283,79 @@ func (b *Bot) trade(ctx context.Context) error {
 	return nil
 }
 
-func (b *Bot) tradeForBuy(info *ExchangeInfo) (bool, error) {
-	amount, err := b.calcBuyAmount(info)
+func (b *Bot) tradeForBuy(info *ExchangeInfo) (bool, bool, error) {
+	amount, shouldLosscut, err := b.calcBuyAmount(info)
 	if err != nil {
-		return false, err
+		return false, shouldLosscut, err
 	}
-	if amount == 0 {
-		return false, err
-	}
+	if !shouldLosscut {
+		if amount == 0 {
+			return false, shouldLosscut, err
+		}
 
-	// 成行買 → 約定待ち
-	if err := b.buyAndWaitForContract(info.Pair, amount); err != nil {
-		return false, err
+		// 成行買 → 約定待ち
+		if err := b.buyAndWaitForContract(info.Pair, amount); err != nil {
+			return false, shouldLosscut, err
+		}
 	}
 
 	// 未決済注文をキャンセル
 	openOrders, err := b.CoincheckCli.GetOpenOrders(info.Pair)
 	if err != nil {
-		return false, err
+		return false, shouldLosscut, err
 	}
 	if err := b.cancel(openOrders); err != nil {
-		return false, err
+		return false, shouldLosscut, err
 	}
 
-	return true, nil
+	return true, shouldLosscut, nil
 }
 
-func (b *Bot) tradeForSell(info *ExchangeInfo) error {
+func (b *Bot) tradeForSell(info *ExchangeInfo, shouldLosscut bool) error {
+	botStatus := mysql.BotStatus{
+		Type: "sell_rate", Value: -1, Memo: "約定待ちの売注文レート",
+	}
+
+	if !info.HasPosition() {
+		b.Logger.Debug(
+			"skip sell (no position, %s:%s)",
+			info.Pair.Key, domain.Yellow("%.3f", info.BalanceCurrency.Total()))
+		b.botStatuses = append(b.botStatuses, botStatus)
+		return nil
+	}
+
 	openOrders, err := b.CoincheckCli.GetOpenOrders(info.Pair)
 	if err != nil {
 		return err
 	}
 
-	botStatus := mysql.BotStatus{
-		Type: "sell_rate", Value: -1, Memo: "約定待ちの売注文レート",
-	}
-
-	currencyAmount := info.BalanceCurrency.Amount + info.BalanceCurrency.Reserved
-	if currencyAmount*info.SellRate <= 1 {
-		b.Logger.Debug(
-			"skip sell (%s:%s == 0.000)",
-			info.Pair.Key, domain.Yellow("%.3f", info.BalanceCurrency.Amount+info.BalanceCurrency.Reserved))
-		b.botStatuses = append(b.botStatuses, botStatus)
-		return nil
-	}
-
 	if len(openOrders) > 0 {
 		b.Logger.Debug("skip sell (open order count:%s > 0)", domain.Yellow("%d", len(openOrders)))
 
+		var lastOrderAt *time.Time
 		for _, order := range openOrders {
+			if lastOrderAt == nil || lastOrderAt.Before(order.OrderedAt) {
+				lastOrderAt = &order.OrderedAt
+			}
 			b.Logger.Debug("open order => [%s rate:%.3f, amount:%.3f]", order.Type, *order.Rate, order.Amount)
 			if botStatus.Value < 0 || botStatus.Value > *order.Rate {
 				botStatus.Value = *order.Rate
 			}
+		}
+		b.Logger.Debug("lastOrderAt[%s]", lastOrderAt.Format(time.RFC3339))
+
+		// 一定時間約定できてないなら成行売り
+		border := time.Now().Add(-12 * time.Hour)
+		if lastOrderAt.Before(border) {
+			b.Logger.Debug("%s (lastOrderAt[%s] < border[%s])", domain.Red("should market sell"), lastOrderAt.Format(time.RFC3339), border.Format(time.RFC3339))
+			if err := b.cancel(openOrders); err != nil {
+				return err
+			}
+			// 成行売り
+			if err := b.marketSellAndWaitForContract(info.Pair, info.BalanceCurrency.Amount); err != nil {
+				return err
+			}
+			botStatus.Value = -1
 		}
 
 		b.botStatuses = append(b.botStatuses, botStatus)
@@ -314,12 +364,13 @@ func (b *Bot) tradeForSell(info *ExchangeInfo) error {
 	}
 	b.Logger.Debug("%s (open order count:%s == 0)", "should sell", domain.Yellow("%d", len(openOrders)))
 
-	// 指値売り
 	newInfo, err := b.getExchangeInfo(info.Pair)
 	if err != nil {
 		return err
 	}
-	rate, amount, err := b.calcSellRateAndAmount(newInfo)
+
+	// 指値売り
+	rate, amount, err := b.calcSellRateAndAmount(newInfo, shouldLosscut)
 	if err != nil {
 		return err
 	}
@@ -363,18 +414,31 @@ func (b *Bot) getExchangeInfo(pair *model.CurrencyPair) (*ExchangeInfo, error) {
 		return nil, err
 	}
 
+	buyOrderContractRate := 0.0
+	contracts, err := b.CoincheckCli.GetContracts()
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range contracts {
+		if c.Side == model.BuySide && c.DecreaseCurrency == pair.Settlement && c.IncreaseCurrency == pair.Key {
+			buyOrderContractRate = c.Rate
+			break
+		}
+	}
+
 	return &ExchangeInfo{
-		Pair:            pair,
-		SellRate:        sellRate.Rate,
-		BuyRate:         buyRate.Rate,
-		BalanceJPY:      balanceJPY,
-		BalanceCurrency: balanceCurrency,
-		TotalJPY:        totalJPY,
+		Pair:                 pair,
+		SellRate:             sellRate.Rate,
+		BuyRate:              buyRate.Rate,
+		BalanceJPY:           balanceJPY,
+		BalanceCurrency:      balanceCurrency,
+		TotalJPY:             totalJPY,
+		BuyOrderContractRate: buyOrderContractRate,
 	}, nil
 }
 
 func (b *Bot) updateAccountInfo(info *ExchangeInfo) error {
-	if (info.BalanceCurrency.Amount+info.BalanceCurrency.Reserved)*info.SellRate >= 1.0 {
+	if info.HasPosition() {
 		return nil
 	}
 	if info.TotalJPY == info.BalanceJPY.Amount {
@@ -385,58 +449,169 @@ func (b *Bot) updateAccountInfo(info *ExchangeInfo) error {
 	return b.MysqlCli.UpsertAccountInfo(mysql.AccountInfoTypeTotalJPY, info.BalanceJPY.Amount)
 }
 
-func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, error) {
+func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, bool, error) {
+	shouldLosscut := false
+
 	rates, err := b.MysqlCli.GetRates(info.Pair, &rateDuration)
 	if err != nil {
-		return 0, err
+		return 0, shouldLosscut, err
 	}
-	required := b.Config.SupportLinePeriod1 + b.Config.SupportLinePeriod2
+
+	required := b.Config.TrendLinePeriod + b.Config.TrendLineOffset
 	if len(rates) < required {
 		b.Logger.Debug("skip buy (rate len:%s < SupportLine required:%d)", domain.Yellow("%d", len(rates)), required)
 		b.buyStandby = false
-		return 0, nil
+		return 0, shouldLosscut, nil
 	}
 
-	// サポートラインより下？
-	supportLines, slope := trade.SupportLine(rates, b.Config.SupportLinePeriod1, b.Config.SupportLinePeriod2)
-	supportLine := supportLines[len(supportLines)-1]
-	supportLineCrossed := info.SellRate < supportLine
-	if supportLineCrossed {
-		b.Logger.Debug("%s support line crossed (sell:%s < support:%s)", domain.Green("OK"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", supportLine))
+	// レート上昇してる？
+	var isRising bool
+	{
+		beforeRate := rates[len(rates)-2]
+		isRising = info.SellRate > beforeRate
+		if isRising {
+			b.Logger.Debug(
+				"%s rate is rising (now:%s > before:%s)",
+				domain.Green("OK"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", beforeRate))
+		} else {
+			b.Logger.Debug(
+				"%s rate is not rising (now:%s <= before:%s)",
+				domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", beforeRate))
+		}
+	}
+
+	// 前回のレートがエントリーエリア（レジスタンスライン近く）？
+	var isBreakout bool
+	{
+		l := len(rates)
+		slope, intercept := trade.ResistanceLine2(rates, l-b.Config.TrendLinePeriod-b.Config.TrendLineOffset, l-b.Config.TrendLineOffset)
+		resistanceLines := trade.MakeLine(slope, intercept, len(rates))
+		resistanceLine := resistanceLines[len(resistanceLines)-1]
+		width := resistanceLine * b.Config.EntryAreaWidth
+		upper := resistanceLine + width
+		lower := resistanceLine
+
+		diff := info.SellRate - rates[len(rates)-1]
+		diffBorder := info.SellRate * b.Config.BreakoutRatio
+
+		isUpperEntryArea := (lower < info.SellRate && info.SellRate < resistanceLine+width)
+		isBreakout = isUpperEntryArea && diff > diffBorder
+		if isUpperEntryArea {
+			if isBreakout {
+				b.Logger.Debug(
+					"%s breakout (diff:%s > border:%s)(lower:%s < sellRate:%s < upper:%s)(width=%.3f * %.3f)",
+					domain.Green("OK"),
+					domain.Yellow("%.3f", diff), domain.Yellow("%.3f", diffBorder),
+					domain.Yellow("%.3f", lower), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+					resistanceLine, b.Config.EntryAreaWidth,
+				)
+			} else {
+				b.Logger.Debug(
+					"%s not breakout (diff:%s <= border:%s)(lower:%s < sellRate:%s < upper:%s)(width=%.3f * %.3f)",
+					domain.Red("NG"),
+					domain.Yellow("%.3f", diff), domain.Yellow("%.3f", diffBorder),
+					domain.Yellow("%.3f", lower), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+					resistanceLine, b.Config.EntryAreaWidth,
+				)
+			}
+		} else {
+			if info.SellRate <= resistanceLine {
+				b.Logger.Debug(
+					"%s sellRate is not in upper entry area (sellRate:%s <= lower:%s)(width=%.3f * %.3f)",
+					domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", lower),
+					resistanceLine, b.Config.EntryAreaWidth,
+				)
+			} else {
+				b.Logger.Debug(
+					"%s sellRate is not in upper entry area (sellRate:%s >= upper:%s)(width=%.3f * %.3f)",
+					domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+					resistanceLine, b.Config.EntryAreaWidth,
+				)
+			}
+		}
+		b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "resistance_line_value", Value: resistanceLine, Memo: "レジスタンスラインの現在値"})
+		b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "resistance_line_slope", Value: slope, Memo: "レジスタンスラインの傾き"})
+	}
+
+	// 前回のレートがエントリーエリア（サポートライン近く）？
+	var isLowerEntryArea bool
+	{
+		l := len(rates)
+		slope, intercept := trade.SupportLine2(rates, l-b.Config.TrendLinePeriod-b.Config.TrendLineOffset, l-b.Config.TrendLineOffset)
+		supportLines := trade.MakeLine(slope, intercept, len(rates))
+		supportLine := supportLines[len(supportLines)-1]
+		width := supportLine * b.Config.EntryAreaWidth
+		upper := supportLine + width
+		lower := supportLine - width
+		isLowerEntryArea = (lower < info.SellRate && info.SellRate < supportLine+width)
+		if isLowerEntryArea {
+			b.Logger.Debug(
+				"%s sellRate is in lower entry area (lower:%s < sellRate:%s < upper:%s)(width=%.3f * %.3f)",
+				domain.Green("OK"), domain.Yellow("%.3f", lower), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+				supportLine, b.Config.EntryAreaWidth,
+			)
+		} else {
+			if info.SellRate <= supportLine {
+				b.Logger.Debug(
+					"%s sellRate is not in lower entry area (sellRate:%s <= lower:%s)(width=%.3f * %.3f)",
+					domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", lower),
+					supportLine, b.Config.EntryAreaWidth,
+				)
+			} else {
+				b.Logger.Debug(
+					"%s sellRate is not in lower entry area (sellRate:%s >= upper:%s)(width=%.3f * %.3f)",
+					domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+					supportLine, b.Config.EntryAreaWidth,
+				)
+			}
+		}
+		b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "support_line_value", Value: supportLine, Memo: "サポートラインの現在値"})
+		b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "support_line_slope", Value: slope, Memo: "サポートラインの傾き"})
+	}
+
+	entrySignal := (isLowerEntryArea || isBreakout) && isRising
+	if entrySignal {
+		b.Logger.Debug("%s (LowerEntryArea:%v, Breakout:%v, isRising:%v)",
+			domain.Green("entry signal"), isLowerEntryArea, isBreakout, isRising)
 	} else {
-		b.Logger.Debug("%s support line not crossed (sell:%s >= support:%s)", domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", supportLine))
+		b.Logger.Debug("%s (LowerEntryArea:%v, Breakout:%v, isRising:%v)",
+			domain.Red("no entry signal"), isLowerEntryArea, isBreakout, isRising)
 	}
-
-	b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "support_line_value", Value: supportLine, Memo: "サポートラインの現在値"})
-	b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "support_line_slope", Value: slope, Memo: "サポートラインの傾き"})
 
 	// サポートラインは右肩上がり？
-	supportLineRising := slope >= 0
-	if supportLineRising {
-		b.Logger.Debug("%s support line is rising (slope:%s >= 0)", domain.Green("OK"), domain.Yellow("%.3f", slope))
-	} else {
-		b.Logger.Debug("%s support line is not rising (slope:%s < 0)", domain.Red("NG"), domain.Yellow("%.3f", slope))
-	}
+	// supportLineRising := slope >= 0
+	// if info.HasPosition() {
+	// 	b.Logger.Debug("%s has position, so support line rising no check (slope:%s)", domain.Green("OK"), domain.Yellow("%.3f", slope))
+	// 	supportLineRising = true
+	// } else if supportLineRising {
+	// 	b.Logger.Debug("%s support line is rising (slope:%s >= 0)", domain.Green("OK"), domain.Yellow("%.3f", slope))
+	// } else {
+	// 	b.Logger.Debug("%s support line is not rising (slope:%s < 0)", domain.Red("NG"), domain.Yellow("%.3f", slope))
+	// }
 
 	// 前注文よりレート下？
 	averagingDown := false
 	averagingDownLittle := false
-	obtainedCurrency := info.BalanceCurrency.Amount + info.BalanceCurrency.Reserved
-	if obtainedCurrency*info.SellRate < 1 {
-		b.Logger.Debug("%s can averaging down (%s:%.3f is very few)", domain.Green("OK"), info.Pair.Key, obtainedCurrency)
-		averagingDown = true
-		averagingDownLittle = true
-	} else {
-		orderRateAVG := info.CalcUsedJPY() / obtainedCurrency
-		border := orderRateAVG * b.Config.AveragingDownRatePer
-		averagingDown = info.BuyRate < border
-		averagingDownLittle = info.BuyRate < orderRateAVG
-		if averagingDown {
-			b.Logger.Debug("%s can averaging down (buyRate:%s < border:%s) (AVG:%.3f)", domain.Green("OK"), domain.Yellow("%.3f", info.BuyRate), domain.Yellow("%.3f", border), orderRateAVG)
-		} else if averagingDownLittle {
-			b.Logger.Debug("%s cannot averaging down (border:%s =< buyRate:%s < AVG:%s)", domain.Red("NG"), domain.Yellow("%.3f", border), domain.Yellow("%.3f", info.BuyRate), domain.Yellow("%.3f", orderRateAVG))
+	{
+		if !info.HasPosition() {
+			b.Logger.Debug(
+				"%s can averaging down (%s:%.3f is very few)",
+				domain.Green("OK"), info.Pair.Key, info.BalanceCurrency.Total())
+			averagingDown = true
+			averagingDownLittle = true
 		} else {
-			b.Logger.Debug("%s cannot averaging down (buyRate:%s >= border:%s) (AVG:%.3f)", domain.Red("NG"), domain.Yellow("%.3f", info.BuyRate), domain.Yellow("%.3f", border), orderRateAVG)
+			//orderRateAVG := info.CalcOrderRateAVG()
+			//border := orderRateAVG * b.Config.AveragingDownRatePer
+			border := info.BuyOrderContractRate * b.Config.AveragingDownRatePer
+			averagingDown = info.BuyRate < border
+			averagingDownLittle = info.BuyRate < info.BuyOrderContractRate
+			if averagingDown {
+				b.Logger.Debug("%s can averaging down (buyRate:%s < border:%s) (min:%.3f)", domain.Green("OK"), domain.Yellow("%.3f", info.BuyRate), domain.Yellow("%.3f", border), info.BuyOrderContractRate)
+			} else if averagingDownLittle {
+				b.Logger.Debug("%s cannot averaging down (border:%s =< buyRate:%s < min:%s)", domain.Red("NG"), domain.Yellow("%.3f", border), domain.Yellow("%.3f", info.BuyRate), domain.Yellow("%.3f", info.BuyOrderContractRate))
+			} else {
+				b.Logger.Debug("%s cannot averaging down (buyRate:%s >= border:%s) (min:%.3f)", domain.Red("NG"), domain.Yellow("%.3f", info.BuyRate), domain.Yellow("%.3f", border), info.BuyOrderContractRate)
+			}
 		}
 	}
 
@@ -448,7 +623,7 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, error) {
 	if newOrderJPY < buyJpyMin {
 		b.Logger.Debug("cannot sending buy order, jpy is too low (%.3f < min:%.3f)", newOrderJPY, buyJpyMin)
 		b.buyStandby = false
-		return 0, nil
+		return 0, shouldLosscut, nil
 	}
 
 	// 追加注文する余裕ある？
@@ -461,30 +636,31 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, error) {
 		b.Logger.Debug("%s cannot order (newOrderJPY:%s < fundsBalance:%s)", domain.Red("NG"), domain.Yellow("%.3f", newOrderJPY), domain.Yellow("%.3f", fundsBalanceJPY))
 	}
 
-	// 急騰時期？
-	priceStable := true
-	if b.soaredTime == nil {
-		b.Logger.Debug("%s not soared warning (soared time :nothing)", domain.Green("OK"))
-	} else {
-		now := time.Now()
-		soaredEndTime := b.soaredTime.Add(time.Duration(b.Config.SoaredWarningPeriodSeconds) * time.Second)
-		priceStable = now.After(soaredEndTime)
-		if priceStable {
-			b.Logger.Debug(
-				"%s price stable (soared:%v < end:%v < now:%v)",
-				domain.Green("OK"), b.soaredTime.Format(time.RFC3339), soaredEndTime.Format(time.RFC3339), now.Format(time.RFC3339))
+	// 取引可能時間
+	tradePeriod := true
+	{
+		if b.skipEndTime == nil {
+			b.Logger.Debug("%s now is tradePeriod (skip end :nothing)", domain.Green("OK"))
 		} else {
-			b.Logger.Debug(
-				"%s price not stable (soared:%v < now:%v < end:%v)",
-				domain.Red("NG"), b.soaredTime.Format(time.RFC3339), now.Format(time.RFC3339), soaredEndTime.Format(time.RFC3339))
+			now := time.Now()
+			tradePeriod = now.After(*b.skipEndTime)
+			if tradePeriod {
+				b.Logger.Debug(
+					"%s now is tradePeriod (now:%v > skip end:%v)",
+					domain.Green("OK"), now.Format(time.RFC3339), b.skipEndTime.Format(time.RFC3339))
+			} else {
+				b.Logger.Debug(
+					"%s now is not tradePeriod (now:%v <= skip end:%v)",
+					domain.Red("NG"), now.Format(time.RFC3339), b.skipEndTime.Format(time.RFC3339))
+			}
 		}
 	}
 
-	if !supportLineCrossed || !supportLineRising || !averagingDown || !canOrder || !priceStable {
-		b.Logger.Debug("skip buy (supportLineCrossed:%v, supportLineRising:%v, averagingDown:%v, canOrder:%v, priceStable:%v)",
-			supportLineCrossed, supportLineRising, averagingDown, canOrder, priceStable)
+	if !entrySignal || !isRising || !averagingDown || !canOrder || !tradePeriod {
+		b.Logger.Debug("skip buy (entrySignal:%v, averagingDown:%v, canOrder:%v, tradePeriod:%v)",
+			entrySignal, averagingDown, canOrder, tradePeriod)
 
-		hasPosition := info.BalanceCurrency.Amount > 0
+		hasPosition := info.HasPosition()
 		newStandby := hasPosition && averagingDownLittle && canOrder
 		if !b.buyStandby && newStandby {
 			b.Logger.Debug("%s (hasPosition:%v,averagingDownLittle:%v,canOrder:%v)", domain.Green("set buyStandby"), hasPosition, averagingDownLittle, canOrder)
@@ -493,19 +669,24 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, error) {
 		}
 		b.buyStandby = newStandby
 
-		return 0, nil
-	}
-	b.Logger.Debug("%s (supportLineCrossed:%v, supportLineRising:%v, averagingDown:%v, canOrder:%v, priceStable:%v)",
-		"should buy", supportLineCrossed, supportLineRising, averagingDown, canOrder, priceStable)
+		if averagingDown && !canOrder {
+			b.Logger.Debug("%s (averagingDown:%v,canOrder:%v)", domain.Red("should losscut"), averagingDown, canOrder)
+			shouldLosscut = true
+		}
 
-	return newOrderJPY, nil
+		return 0, shouldLosscut, nil
+	}
+	b.Logger.Debug("%s (entrySignal:%v, averagingDown:%v, canOrder:%v, tradePeriod:%v)",
+		"should buy", entrySignal, averagingDown, canOrder, tradePeriod)
+
+	return newOrderJPY, shouldLosscut, nil
 }
 
 func (b *Bot) buyAndWaitForContract(pair *model.CurrencyPair, amount float64) error {
 	b.Logger.Debug("======================================")
 	defer b.Logger.Debug("======================================")
 
-	b.Logger.Debug("sending buy order ...")
+	b.Logger.Debug("sending market buy order ...")
 	order, err := b.CoincheckCli.PostOrder(&model.NewOrder{
 		Type:            model.MarketBuy,
 		Pair:            *pair,
@@ -546,6 +727,7 @@ func (b *Bot) buyAndWaitForContract(pair *model.CurrencyPair, amount float64) er
 			if c.OrderID == order.ID {
 				b.Logger.Debug(domain.Green("contracted!!![id:%d]", order.ID))
 				b.buyStandby = false
+				b.setSkipEndTime(time.Now().Add(time.Duration(b.Config.BuyIntervalSeconds) * time.Second))
 				return nil
 			}
 		}
@@ -557,6 +739,15 @@ func (b *Bot) cancel(orders []model.Order) error {
 	for _, o := range orders {
 		if err := b.CoincheckCli.DeleteOrder(o.ID); err != nil {
 			return err
+		}
+	}
+
+	if len(orders) > 0 {
+		message := slack.TextMessage{
+			Text: "canel orders",
+		}
+		if err := b.SlackCli.PostMessage(message); err != nil {
+			b.Logger.Error("%v", err)
 		}
 	}
 
@@ -576,11 +767,15 @@ func (b *Bot) cancel(orders []model.Order) error {
 	return nil
 }
 
-func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo) (rate float64, amount float64, err error) {
+func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo, shouldLosscut bool) (rate float64, amount float64, err error) {
+	amount = round(info.BalanceCurrency.Amount)
+
 	usedJPY := info.CalcUsedJPY()
-	profit := usedJPY * b.Config.TargetProfitPer
-	rate = (usedJPY + profit) / info.BalanceCurrency.Amount
-	amount = info.BalanceCurrency.Amount
+	profit := info.CalcTotalBalanceJPY() * b.Config.FundsRatioPerOrder * b.Config.TargetProfitPer
+	if shouldLosscut {
+		profit = 0
+	}
+	rate = (usedJPY + profit) / amount
 
 	return
 }
@@ -625,6 +820,62 @@ func (b *Bot) sell(info *ExchangeInfo, rate float64, amount float64) error {
 	return nil
 }
 
+func (b *Bot) marketSellAndWaitForContract(pair *model.CurrencyPair, amount float64) error {
+	b.Logger.Debug("======================================")
+	defer b.Logger.Debug("======================================")
+
+	b.Logger.Debug("sending market sell order ...")
+	order, err := b.CoincheckCli.PostOrder(&model.NewOrder{
+		Type:   model.MarketSell,
+		Pair:   *pair,
+		Amount: &amount,
+	})
+	if err != nil {
+		return err
+	}
+	b.Logger.Debug(domain.Green("completed!!![id:%d,%.3f]", order.ID, amount))
+
+	message := slack.TextMessage{
+		Text: fmt.Sprintf(
+			"market sell completed!!! `%s amount:%.3f`",
+			order.Pair.String(),
+			amount,
+		),
+	}
+	if err := b.SlackCli.PostMessage(message); err != nil {
+		b.Logger.Error("%v", err)
+	}
+	if err := b.MysqlCli.AddEvent(&mysql.Event{
+		Pair:       pair.String(),
+		EventType:  mysql.SellEvent,
+		Memo:       message.Text,
+		RecordedAt: time.Now(),
+	}); err != nil {
+		b.Logger.Error("%v", err)
+	}
+
+	b.Logger.Debug("wait for contract[id:%d]...", order.ID)
+	// 約定を待つ
+	for {
+		cc, err := b.CoincheckCli.GetContracts()
+		if err != nil {
+			return err
+		}
+		for _, c := range cc {
+			if c.OrderID == order.ID {
+				b.Logger.Debug(domain.Green("contracted!!![id:%d]", order.ID))
+				return nil
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func (b *Bot) setSkipEndTime(t time.Time) {
+	b.skipEndTime = &t
+	b.Logger.Debug("set skip end time => %s", domain.Yellow("%s", b.skipEndTime.Format(time.RFC3339)))
+}
+
 func (b *Bot) WatchTrade(ctx context.Context) func() error {
 	return func() error {
 		// 取引履歴の監視
@@ -644,33 +895,50 @@ func (b *Bot) WatchTrade(ctx context.Context) func() error {
 	}
 }
 
-func (b *Bot) receiveTrade(side model.OrderSide, rate float64) error {
+func (b *Bot) receiveTrade(h *coincheck.TradeHistory) error {
 	d := time.Duration(b.Config.VolumeCheckSeconds) * time.Second
-	v, err := b.CoincheckCli.GetVolumes(b.Config.GetTargetPair(model.JPY), side, d)
+	v, err := b.CoincheckCli.GetVolumes(b.Config.GetTargetPair(model.JPY), h.Side, d)
 	if err != nil {
 		return err
 	}
 
-	if side == model.BuySide {
+	key := time.Now().Format(volumeKey)
+
+	if h.Side == model.BuySide {
 		if v > b.Config.BuyMaxVolume {
 			b.Logger.Debug("[receive] %s (buy volume:%.3f > max:%.3f)", domain.Red("record soaredTime"), v, b.Config.BuyMaxVolume)
-			now := time.Now()
-			b.soaredTime = &now
+			b.setSkipEndTime(time.Now().Add(time.Duration(b.Config.SoaredWarningPeriodSeconds) * time.Second))
 		} else {
 			b.Logger.Debug("[receive] skip record soaredTime (buy volume:%.3f <= max:%.3f)", v, b.Config.BuyMaxVolume)
 		}
+
+		total := 0.0
+		if v1, ok := b.buyVolumeCache.Load(key); ok {
+			if v2, ok := v1.(float64); ok {
+				total = v2
+			}
+		}
+		b.buyVolumeCache.Store(key, total+h.Amount)
+
 		return nil
 	}
 
 	if v > b.Config.SellMaxVolume {
 		b.Logger.Debug("[receive] %s (sell volume:%.3f > max:%.3f)", domain.Green("set buyStandby"), v, b.Config.SellMaxVolume)
 		b.buyStandby = true
-		// 警戒期間を残り5分に設定
-		soaredTime := time.Now().Add(-time.Duration(b.Config.SoaredWarningPeriodSeconds)*time.Second + 5*time.Minute)
-		b.soaredTime = &soaredTime
+		// 警戒期間をクリア
+		b.setSkipEndTime(time.Now())
 	} else {
 		b.Logger.Debug("[receive] skip set buyStandby (sell volume:%.3f <= max:%.3f)", v, b.Config.SellMaxVolume)
 	}
+
+	total := 0.0
+	if v1, ok := b.sellVolumeCache.Load(key); ok {
+		if v2, ok := v1.(float64); ok {
+			total = v2
+		}
+	}
+	b.sellVolumeCache.Store(key, total+h.Amount)
 
 	return nil
 }
@@ -735,13 +1003,29 @@ func (b *Bot) fetch(ctx context.Context) error {
 		return err
 	}
 
+	key := time.Now().Format(volumeKey)
+	volumeSell := 0.0
+	if v1, ok := b.sellVolumeCache.Load(key); ok {
+		if v2, ok := v1.(float64); ok {
+			volumeSell = v2
+		}
+		b.sellVolumeCache.Delete(key)
+	}
+	volumeBuy := 0.0
+	if v1, ok := b.buyVolumeCache.Load(key); ok {
+		if v2, ok := v1.(float64); ok {
+			volumeBuy = v2
+		}
+		b.buyVolumeCache.Delete(key)
+	}
+
 	m := mysql.Market{
 		Pair:         pair.String(),
 		StoreRateAVG: storeRate.Rate,
 		ExRateSell:   sellRate.Rate,
 		ExRateBuy:    buyRate.Rate,
-		ExVolumeSell: 0,
-		ExVolumeBuy:  0,
+		ExVolumeSell: volumeSell,
+		ExVolumeBuy:  volumeBuy,
 		RecordedAt:   time.Now(),
 	}
 	if err := b.MysqlCli.AddMarket(&m); err != nil {
@@ -749,4 +1033,8 @@ func (b *Bot) fetch(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func round(v float64) float64 {
+	return float64(int(v*10000)) / 10000
 }

@@ -59,6 +59,11 @@ type Balance struct {
 	Reserved float64
 }
 
+// Total 残高合計
+func (b *Balance) Total() float64 {
+	return b.Amount + b.Reserved
+}
+
 // NewOrder 新規注文
 type NewOrder struct {
 	Type            OrderType

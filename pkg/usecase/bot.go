@@ -4,6 +4,7 @@ import (
 	"context"
 	"trading-bot/pkg/domain"
 	"trading-bot/pkg/domain/model"
+	"trading-bot/pkg/infrastructure/coincheck"
 	"trading-bot/pkg/usecase/trade"
 )
 
@@ -65,12 +66,12 @@ func (b *Bot) Wait(ctx context.Context) error {
 	return b.strategy.Wait(ctx)
 }
 
-func (b *Bot) ReceiveTrade(side model.OrderSide, rate float64) error {
+func (b *Bot) ReceiveTrade(h *coincheck.TradeHistory) error {
 	if b.strategy == nil {
 		return nil
 	}
 
-	if side == model.BuySide {
+	if h.Side == model.BuySide {
 		pp, err := b.facade.GetOpenPositions()
 		if err != nil {
 			return err
@@ -82,8 +83,8 @@ func (b *Bot) ReceiveTrade(side model.OrderSide, rate float64) error {
 			return nil
 		}
 
-		return b.strategy.BuyTradeCallback(b.pair, rate)
+		return b.strategy.BuyTradeCallback(b.pair, h.Rate)
 	} else {
-		return b.strategy.SellTradeCallback(b.pair, rate)
+		return b.strategy.SellTradeCallback(b.pair, h.Rate)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"trading-bot/pkg/domain/model"
 )
 
 // NewOrder 注文（新規）
@@ -72,7 +73,7 @@ type TradeHistory struct {
 	Pair   string
 	Rate   float64
 	Amount float64
-	Side   string
+	Side   model.OrderSide
 	Time   time.Time
 }
 
@@ -100,7 +101,12 @@ func NewTradeHistory(b []byte) (h *TradeHistory, err error) {
 	if err != nil {
 		return
 	}
-	h.Side = values[4]
+	if values[4] == "buy" {
+		h.Side = model.BuySide
+	} else {
+		h.Side = model.SellSide
+	}
+
 	h.Time = time.Now()
 	return
 }

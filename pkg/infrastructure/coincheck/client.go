@@ -231,7 +231,7 @@ func (c *Client) GetVolumes(p *model.CurrencyPair, side model.OrderSide, d time.
 }
 
 // SubscribeTradeHistory 取引履歴を購読
-func (c *Client) SubscribeTradeHistory(ctx context.Context, p *model.CurrencyPair, callback func(model.OrderSide, float64) error) error {
+func (c *Client) SubscribeTradeHistory(ctx context.Context, p *model.CurrencyPair, callback func(*TradeHistory) error) error {
 	ws, _, err := websocket.DefaultDialer.DialContext(ctx, originWS, nil)
 	if err != nil {
 		return err
@@ -273,26 +273,19 @@ func (c *Client) SubscribeTradeHistory(ctx context.Context, p *model.CurrencyPai
 				return err
 			}
 
-			var side model.OrderSide
-			if h.Side == "buy" {
-				side = model.BuySide
-			} else {
-				side = model.SellSide
-			}
-
 			if _, ok := c.tradeCaches[p.String()]; !ok {
 				c.tradeCaches[p.String()] = map[int]*gocache.Cache{}
 			}
-			if _, ok := c.tradeCaches[p.String()][int(side)]; !ok {
-				c.tradeCaches[p.String()][int(side)] = gocache.New(cacheExpire, cacheCleanupInterval)
+			if _, ok := c.tradeCaches[p.String()][int(h.Side)]; !ok {
+				c.tradeCaches[p.String()][int(h.Side)] = gocache.New(cacheExpire, cacheCleanupInterval)
 			}
 
 			key := fmt.Sprintf("%d", h.ID)
-			if err := c.tradeCaches[p.String()][int(side)].Add(key, h, cacheExpire); err != nil {
+			if err := c.tradeCaches[p.String()][int(h.Side)].Add(key, h, cacheExpire); err != nil {
 				return err
 			}
 
-			if err := callback(side, h.Rate); err != nil {
+			if err := callback(h); err != nil {
 				return err
 			}
 		}

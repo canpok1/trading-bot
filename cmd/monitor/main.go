@@ -124,9 +124,11 @@ func apiHandler(mysqlCli *mysql.Client) func(http.ResponseWriter, *http.Request)
 		}
 		for _, m := range markets {
 			res.Markets = append(res.Markets, Market{
-				Datetime: m.RecordedAt.Format(time.RFC3339),
-				SellRate: m.ExRateSell,
-				BuyRate:  m.ExRateBuy,
+				Datetime:   m.RecordedAt.Format(time.RFC3339),
+				SellRate:   m.ExRateSell,
+				BuyRate:    m.ExRateBuy,
+				SellVolume: m.ExVolumeSell,
+				BuyVolume:  m.ExVolumeBuy,
 			})
 		}
 
@@ -156,9 +158,11 @@ func apiHandler(mysqlCli *mysql.Client) func(http.ResponseWriter, *http.Request)
 }
 
 type Market struct {
-	Datetime string  `json:"datetime"`
-	SellRate float64 `json:"sell_rate"`
-	BuyRate  float64 `json:"buy_rate"`
+	Datetime   string  `json:"datetime"`
+	SellRate   float64 `json:"sell_rate"`
+	BuyRate    float64 `json:"buy_rate"`
+	SellVolume float64 `json:"sell_volume"`
+	BuyVolume  float64 `json:"buy_volume"`
 }
 type Event struct {
 	Datetime string `json:"datetime"`
