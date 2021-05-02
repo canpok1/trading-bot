@@ -156,8 +156,6 @@ type ExchangeInfo struct {
 	BalanceJPY *model.Balance
 	// 残高（コイン）
 	BalanceCurrency *model.Balance
-	// 資金(JPY)
-	TotalJPY float64
 	// 前回の買注文の約定レート
 	BuyOrderContractRate float64
 }
@@ -169,26 +167,9 @@ func (e *ExchangeInfo) CalcTotalBalanceJPY() float64 {
 	return jpy + other
 }
 
-// CalcUsedJPY コイン購入に使用したJPY（未約定分は除外）
-func (e *ExchangeInfo) CalcUsedJPY() float64 {
-	usedJPY := e.TotalJPY - e.BalanceJPY.Amount
-	if usedJPY < 0 {
-		return 0
-	}
-	return usedJPY
-}
-
 // HasPosition ポジションを持っているか？
 func (e *ExchangeInfo) HasPosition() bool {
 	return e.BalanceCurrency.Total()*e.SellRate >= 1
-}
-
-// CalcOrderRateAVG 保有中コインの平均購入レート
-func (e *ExchangeInfo) CalcOrderRateAVG() float64 {
-	if !e.HasPosition() {
-		return 0
-	}
-	return e.CalcUsedJPY() / e.BalanceCurrency.Total()
 }
 
 type Bot struct {
@@ -261,13 +242,9 @@ func (b *Bot) trade(ctx context.Context) error {
 		info.Pair, info.SellRate, info.BuyRate,
 		info.BalanceJPY.Currency, info.BalanceJPY.Amount,
 		info.BalanceCurrency.Currency, info.BalanceCurrency.Amount,
-		info.TotalJPY,
+		info.CalcTotalBalanceJPY(),
 	)
 	b.Logger.Debug("================================================================================================")
-
-	if err := b.updateAccountInfo(info); err != nil {
-		return err
-	}
 
 	traded, shouldLosscut, err := b.tradeForBuy(info)
 	if err != nil {
@@ -418,11 +395,6 @@ func (b *Bot) getExchangeInfo(pair *model.CurrencyPair) (*ExchangeInfo, error) {
 		return nil, err
 	}
 
-	totalJPY, err := b.MysqlCli.GetAccountInfo(mysql.AccountInfoTypeTotalJPY)
-	if err != nil {
-		return nil, err
-	}
-
 	buyOrderContractRate := 0.0
 	contracts, err := b.CoincheckCli.GetContracts()
 	if err != nil {
@@ -441,21 +413,8 @@ func (b *Bot) getExchangeInfo(pair *model.CurrencyPair) (*ExchangeInfo, error) {
 		BuyRate:              buyRate.Rate,
 		BalanceJPY:           balanceJPY,
 		BalanceCurrency:      balanceCurrency,
-		TotalJPY:             totalJPY,
 		BuyOrderContractRate: buyOrderContractRate,
 	}, nil
-}
-
-func (b *Bot) updateAccountInfo(info *ExchangeInfo) error {
-	if info.HasPosition() && info.TotalJPY > 0 {
-		return nil
-	}
-	if info.TotalJPY == info.BalanceJPY.Amount {
-		return nil
-	}
-	info.TotalJPY = info.BalanceJPY.Amount
-
-	return b.MysqlCli.UpsertAccountInfo(mysql.AccountInfoTypeTotalJPY, info.BalanceJPY.Amount)
 }
 
 func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, bool, error) {
@@ -587,17 +546,6 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, bool, error) {
 			domain.Red("no entry signal"), isLowerEntryArea, isBreakout, isRising)
 	}
 
-	// サポートラインは右肩上がり？
-	// supportLineRising := slope >= 0
-	// if info.HasPosition() {
-	// 	b.Logger.Debug("%s has position, so support line rising no check (slope:%s)", domain.Green("OK"), domain.Yellow("%.3f", slope))
-	// 	supportLineRising = true
-	// } else if supportLineRising {
-	// 	b.Logger.Debug("%s support line is rising (slope:%s >= 0)", domain.Green("OK"), domain.Yellow("%.3f", slope))
-	// } else {
-	// 	b.Logger.Debug("%s support line is not rising (slope:%s < 0)", domain.Red("NG"), domain.Yellow("%.3f", slope))
-	// }
-
 	// 前注文よりレート下？
 	averagingDown := false
 	averagingDownLittle := false
@@ -609,8 +557,6 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, bool, error) {
 			averagingDown = true
 			averagingDownLittle = true
 		} else {
-			//orderRateAVG := info.CalcOrderRateAVG()
-			//border := orderRateAVG * b.Config.AveragingDownRatePer
 			border := info.BuyOrderContractRate * b.Config.AveragingDownRatePer
 			averagingDown = info.BuyRate < border
 			averagingDownLittle = info.BuyRate < info.BuyOrderContractRate
@@ -625,19 +571,19 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, bool, error) {
 	}
 
 	// 追加注文に使う金額(JPY)
-	newOrderJPY := info.CalcUsedJPY()
+	newOrderJPY := info.BalanceCurrency.Reserved * info.BuyRate
 	if newOrderJPY == 0.0 {
-		newOrderJPY = info.TotalJPY * b.Config.FundsRatioPerOrder
+		newOrderJPY = info.CalcTotalBalanceJPY() * b.Config.FundsRatioPerOrder
 	}
 	if newOrderJPY < buyJpyMin {
-		b.Logger.Debug("cannot sending buy order, jpy is too low (%.3f < min:%.3f)", newOrderJPY, buyJpyMin)
+		b.Logger.Debug("%s cannot sending buy order, jpy is too low (%.3f < min:%.3f)", domain.Red("NG"), newOrderJPY, buyJpyMin)
 		b.buyStandby = false
 		return 0, shouldLosscut, nil
 	}
 
 	// 追加注文する余裕ある？
-	fundsTotalJPY := info.TotalJPY * b.Config.FundsRatio
-	fundsBalanceJPY := fundsTotalJPY - info.CalcUsedJPY()
+	fundsTotalJPY := info.CalcTotalBalanceJPY() * b.Config.FundsRatio
+	fundsBalanceJPY := fundsTotalJPY - info.BalanceCurrency.Total()*info.SellRate
 	canOrder := newOrderJPY <= fundsBalanceJPY
 	if canOrder {
 		b.Logger.Debug("%s can order (newOrderJPY:%s < fundsBalance:%s)", domain.Green("OK"), domain.Yellow("%.3f", newOrderJPY), domain.Yellow("%.3f", fundsBalanceJPY))
@@ -791,7 +737,7 @@ func (b *Bot) cancel(orders []model.Order) error {
 func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo, shouldLosscut bool) (rate float64, amount float64, err error) {
 	amount = round(info.BalanceCurrency.Amount)
 
-	usedJPY := info.CalcUsedJPY()
+	usedJPY := info.CalcTotalBalanceJPY() - info.BalanceJPY.Amount
 	profit := info.CalcTotalBalanceJPY() * b.Config.FundsRatioPerOrder * b.Config.TargetProfitPer
 	if shouldLosscut {
 		profit = 0
