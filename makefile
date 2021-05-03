@@ -10,6 +10,9 @@ run-logger:
 run-monitor:
 	scripts/run_monitor.sh
 
+run-fetcher:
+	scripts/run_fetcher.sh
+
 test:
 	go test ./...
 

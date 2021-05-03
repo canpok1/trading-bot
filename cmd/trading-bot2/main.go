@@ -63,7 +63,7 @@ func main() {
 	rootCtx, cancel := context.WithCancel(context.Background())
 	errGroup, ctx := errgroup.WithContext(rootCtx)
 
-	errGroup.Go(bot.Fetch(ctx))
+	//errGroup.Go(bot.Fetch(ctx))
 	errGroup.Go(bot.Trade(ctx))
 	//errGroup.Go(bot.WatchTrade(ctx))
 	errGroup.Go(bot.ReceiveTradeHandler(ctx))

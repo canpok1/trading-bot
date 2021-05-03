@@ -31,6 +31,15 @@ services:
       MONITOR_DB_PASSWORD: P@ssw0rd
     depends_on:
       - db
+  fetcher:
+    build:
+      context: ../
+      dockerfile: build/Dockerfile-fetcher
+    env_file:
+      - ../configs/db.env
+      - ../configs/fetcher.env
+    depends_on:
+      - db
   bot:
     build:
       context: ../

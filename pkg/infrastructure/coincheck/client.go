@@ -37,6 +37,16 @@ func NewClient(logger *memory.Logger, APIAccessKey, APISecretKey string) *Client
 	}
 }
 
+// NewPublicClient 認証情報なしのクライアントを生成
+func NewPublicClient(logger *memory.Logger) *Client {
+	return &Client{
+		Logger:       logger,
+		APIAccessKey: "",
+		APISecretKey: "",
+		tradeCaches:  map[string]map[int]*gocache.Cache{},
+	}
+}
+
 // GetStoreRate 販売所のレート取得
 func (c *Client) GetStoreRate(p *model.CurrencyPair) (*model.StoreRate, error) {
 	r, err := c.getRate(p)
