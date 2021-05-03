@@ -344,7 +344,7 @@ func (b *Bot) tradeForSell(info *ExchangeInfo, shouldLosscut bool) error {
 				return err
 			}
 			// 成行売り
-			if err := b.marketSellAndWaitForContract(info.Pair, info.BalanceCurrency.Amount); err != nil {
+			if err := b.marketSellAndWaitForContract(info.Pair, domain.Round(info.BalanceCurrency.Amount)); err != nil {
 				return err
 			}
 			botStatus.Value = -1
@@ -577,9 +577,9 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, bool, error) {
 	}
 
 	// 追加注文に使う金額(JPY)
-	newOrderJPY := info.BalanceCurrency.Reserved * info.BuyRate
+	newOrderJPY := domain.Round(info.BalanceCurrency.Reserved * info.BuyRate)
 	if newOrderJPY == 0.0 {
-		newOrderJPY = info.CalcTotalBalanceJPY() * b.Config.FundsRatioPerOrder
+		newOrderJPY = domain.Round(info.CalcTotalBalanceJPY() * b.Config.FundsRatioPerOrder)
 	}
 	if newOrderJPY < buyJpyMin {
 		b.Logger.Debug("%s cannot sending buy order, jpy is too low (%.3f < min:%.3f)", domain.Red("NG"), newOrderJPY, buyJpyMin)
@@ -741,7 +741,7 @@ func (b *Bot) cancel(orders []model.Order) error {
 }
 
 func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo, shouldLosscut bool) (rate float64, amount float64, err error) {
-	amount = round(info.BalanceCurrency.Amount)
+	amount = domain.Round(info.BalanceCurrency.Amount)
 
 	totalJPY, err := b.MysqlCli.GetAccountInfo(mysql.AccountInfoTypeTotalJPY)
 	if err != nil {
@@ -1039,8 +1039,4 @@ func (b *Bot) fetch(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func round(v float64) float64 {
-	return float64(int(v*10000)) / 10000
 }

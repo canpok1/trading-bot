@@ -36,3 +36,7 @@ func Cyan(format string, a ...interface{}) string {
 func White(format string, a ...interface{}) string {
 	return fmt.Sprintf("\x1b[37m"+format+"\x1b[0m", a...)
 }
+
+func Round(v float64) float64 {
+	return float64(int(v*10000)) / 10000
+}
