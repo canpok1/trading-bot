@@ -79,7 +79,7 @@ func main() {
 
 func watchSignal(ctx context.Context, logger *memory.Logger) error {
 	// OSのシグナル監視
-	quit := make(chan os.Signal)
+	quit := make(chan os.Signal, 1)
 	defer close(quit)
 	signal.Notify(quit, os.Interrupt)
 	select {
@@ -435,7 +435,7 @@ func (b *Bot) losscut(info *ExchangeInfo, openOrders []model.Order) (bool, error
 	if err := b.cancel(openOrders); err != nil {
 		return false, err
 	}
-	if err := b.marketSellAndWaitForContract(info.Pair, domain.Round(info.BalanceCurrency.Amount)); err != nil {
+	if err := b.marketSellAndWaitForContract(info.Pair, domain.Round(info.BalanceCurrency.Total())); err != nil {
 		return false, err
 	}
 	return true, nil
