@@ -31,7 +31,7 @@ func main() {
 	defer logger.Info("===== END PROGRAM ======================")
 
 	var config MonitorConfig
-	if err := envconfig.Process("MONITOR", &config); err != nil {
+	if err := envconfig.Process("", &config); err != nil {
 		logger.Error(err.Error())
 		return
 	}

@@ -23,12 +23,8 @@ services:
       dockerfile: build/Dockerfile-monitor
     ports:
       - "18080:8080"
-    environment:
-      MONITOR_DB_HOST: db
-      MONITOR_DB_PORT: 3306
-      MONITOR_DB_NAME: trading-bot
-      MONITOR_DB_USER_NAME: bot
-      MONITOR_DB_PASSWORD: P@ssw0rd
+    env_file:
+      - ../configs/db.env
     depends_on:
       - db
   fetcher:
@@ -46,34 +42,10 @@ services:
       dockerfile: build/Dockerfile-bot
     depends_on:
       - db
-    environment:
-      # Bot設定
-      BOT_TARGET_CURRENCY: mona
-      BOT_INTERVAL_SECONDS: 60
-      BOT_DEMO_MODE: "false"
-      BOT_TREND_LINE_PERIOD: 150
-      BOT_TREND_LINE_OFFSET: 5
-      BOT_ENTRY_AREA_WIDTH: 0.005
-      BOT_BREAKOUT_RATIO: 0.003
-      BOT_AVERAGING_DOWN_RATE_PER: 0.98
-      BOT_SELL_MAX_VOLUME: 2000.0
-      BOT_BUY_MAX_VOLUME: 2000.0
-      BOT_VOLUME_CHECK_SECONDS: 120
-      BOT_SOARED_WARNING_PERIOD_SECONDS: 0
-      BOT_BUY_INTERVAL_SECONDS: 600
-      BOT_FUNDS_RATIO: 1.0
-      BOT_FUNDS_RATIO_PER_ORDER: 0.2
-      BOT_TARGET_PROFIT_PER: 0.005
-      # 取引所
-      BOT_EXCHANGE_ACCESS_KEY: xxxxxxxxxx
-      BOT_EXCHANGE_SECRET_KEY: xxxxxxxxxx
-      # DB設定
-      BOT_DB_HOST: db
-      BOT_DB_PORT: 3306
-      BOT_DB_NAME: trading-bot
-      BOT_DB_USER_NAME: bot
-      BOT_DB_PASSWORD: P@ssw0rd
-      # Slack設定
-      BOT_SLACK_URL: https://xxxxxxxxxx
+    env_file:
+      - ../configs/db.env
+      - ../configs/slack.env
+      - ../configs/exchange.env
+      - ../configs/bot2.env
 volumes:
   db-store:

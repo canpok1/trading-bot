@@ -45,7 +45,7 @@ func main() {
 	defer logger.Info("===== END PROGRAM ======================")
 
 	var config BotConfig
-	if err := envconfig.Process("BOT", &config); err != nil {
+	if err := envconfig.Process("", &config); err != nil {
 		logger.Error(err.Error())
 		return
 	}
