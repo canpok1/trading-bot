@@ -65,7 +65,7 @@ func main() {
 
 	errGroup.Go(bot.Fetch(ctx))
 	errGroup.Go(bot.Trade(ctx))
-	errGroup.Go(bot.WatchTrade(ctx))
+	//errGroup.Go(bot.WatchTrade(ctx))
 	errGroup.Go(bot.ReceiveTradeHandler(ctx))
 	errGroup.Go(func() error {
 		defer cancel()
