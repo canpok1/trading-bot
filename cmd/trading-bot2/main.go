@@ -340,12 +340,10 @@ func (b *Bot) tradeForSell(info *ExchangeInfo, shouldLosscut bool) error {
 		border := time.Now().Add(-12 * time.Hour)
 		if lastOrderAt.Before(border) {
 			b.Logger.Debug("%s (lastOrderAt[%s] < border[%s])", domain.Red("should market sell"), lastOrderAt.Format(time.RFC3339), border.Format(time.RFC3339))
-			if err := b.cancel(openOrders); err != nil {
+			if done, err := b.losscut(info, openOrders); err != nil {
 				return err
-			}
-			// 成行売り
-			if err := b.marketSellAndWaitForContract(info.Pair, domain.Round(info.BalanceCurrency.Amount)); err != nil {
-				return err
+			} else if !done {
+				return nil
 			}
 			botStatus.Value = -1
 		}
@@ -379,6 +377,68 @@ func (b *Bot) tradeForSell(info *ExchangeInfo, shouldLosscut bool) error {
 	b.botStatuses = append(b.botStatuses, botStatus)
 
 	return nil
+}
+
+func (b *Bot) losscut(info *ExchangeInfo, openOrders []model.Order) (bool, error) {
+	rates, err := b.MysqlCli.GetRates(info.Pair, &rateDuration)
+	if err != nil {
+		return false, err
+	}
+
+	l := len(rates)
+	slope, intercept := trade.ResistanceLine2(rates, l-b.Config.TrendLinePeriod-b.Config.TrendLineOffset, l-b.Config.TrendLineOffset)
+	resistanceLines := trade.MakeLine(slope, intercept, len(rates))
+	resistanceLine := resistanceLines[len(resistanceLines)-1]
+	width := resistanceLine * b.Config.EntryAreaWidth
+	upper := resistanceLine
+	lower := resistanceLine - width
+
+	before := rates[len(rates)-1]
+	isLosscutArea := (lower < info.SellRate && info.SellRate < resistanceLine+width)
+	if !isLosscutArea {
+		if info.SellRate <= resistanceLine {
+			b.Logger.Debug(
+				"%s sellRate is not in losscut area (sellRate:%s <= lower:%s)(width=%.3f * %.3f)",
+				domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", lower),
+				resistanceLine, b.Config.EntryAreaWidth,
+			)
+		} else {
+			b.Logger.Debug(
+				"%s sellRate is not in losscut area (sellRate:%s >= upper:%s)(width=%.3f * %.3f)",
+				domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+				resistanceLine, b.Config.EntryAreaWidth,
+			)
+		}
+		return false, nil
+	}
+
+	isRebound := before > info.SellRate
+	if !isRebound {
+		b.Logger.Debug(
+			"%s not rebound (sellRate:%s -> %s)(lower:%s < sellRate:%s < upper:%s)(width=%.3f * %.3f)",
+			domain.Red("NG"),
+			domain.Yellow("%.3f", before), domain.Yellow("%.3f", info.SellRate),
+			domain.Yellow("%.3f", lower), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+			resistanceLine, b.Config.EntryAreaWidth,
+		)
+		return false, nil
+	}
+
+	b.Logger.Debug(
+		"%s rebound near resistance line (sellRate:%s -> %s)(lower:%s < sellRate:%s < upper:%s)(width=%.3f * %.3f)",
+		domain.Green("OK"),
+		domain.Yellow("%.3f", before), domain.Yellow("%.3f", info.SellRate),
+		domain.Yellow("%.3f", lower), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+		resistanceLine, b.Config.EntryAreaWidth,
+	)
+
+	if err := b.cancel(openOrders); err != nil {
+		return false, err
+	}
+	if err := b.marketSellAndWaitForContract(info.Pair, domain.Round(info.BalanceCurrency.Amount)); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (b *Bot) getExchangeInfo(pair *model.CurrencyPair) (*ExchangeInfo, error) {
