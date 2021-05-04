@@ -144,7 +144,7 @@ func apiHandler(mysqlCli *mysql.Client) func(http.ResponseWriter, *http.Request)
 			})
 		}
 
-		botStatus, err := mysqlCli.GetBotStatusAll()
+		botStatus, err := mysqlCli.GetBotStatusAll("default")
 		if err != nil {
 			panic(err)
 		}

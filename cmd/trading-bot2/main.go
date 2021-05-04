@@ -92,6 +92,8 @@ func watchSignal(ctx context.Context, logger *memory.Logger) error {
 
 type BotConfig struct {
 	// ===== 基本設定 =====
+	// ボット名
+	BotName string `required:"true" split_words:"true"`
 	// 購入対象コイン
 	TargetCurrency string `required:"true" split_words:"true"`
 	// 稼働間隔（秒）
@@ -288,7 +290,7 @@ func (b *Bot) tradeForBuy(info *ExchangeInfo) error {
 
 func (b *Bot) tradeForSell(info *ExchangeInfo) error {
 	botStatus := mysql.BotStatus{
-		Type: "sell_rate", Value: -1, Memo: "約定待ちの売注文レート",
+		BotName: b.Config.BotName, Type: "sell_rate", Value: -1, Memo: "約定待ちの売注文レート",
 	}
 
 	if !info.HasPosition() {
@@ -366,6 +368,13 @@ func (b *Bot) losscut(info *ExchangeInfo, openOrders []model.Order) (bool, error
 	rates, err := b.MysqlCli.GetRates(info.Pair, &rateDuration)
 	if err != nil {
 		return false, err
+	}
+	required := b.Config.TrendLinePeriod + b.Config.TrendLineOffset
+	if len(rates) < required {
+		b.Logger.Debug(
+			"skip losscut (rate len:%s < ResistanceLine required:%d)",
+			domain.Yellow("%d", len(rates)), required)
+		return false, nil
 	}
 
 	l := len(rates)
@@ -544,8 +553,8 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, error) {
 				)
 			}
 		}
-		b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "resistance_line_value", Value: resistanceLine, Memo: "レジスタンスラインの現在値"})
-		b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "resistance_line_slope", Value: slope, Memo: "レジスタンスラインの傾き"})
+		b.botStatuses = append(b.botStatuses, mysql.BotStatus{BotName: b.Config.BotName, Type: "resistance_line_value", Value: resistanceLine, Memo: "レジスタンスラインの現在値"})
+		b.botStatuses = append(b.botStatuses, mysql.BotStatus{BotName: b.Config.BotName, Type: "resistance_line_slope", Value: slope, Memo: "レジスタンスラインの傾き"})
 	}
 
 	// 前回のレートがエントリーエリア（サポートライン近く）？
@@ -580,8 +589,8 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, error) {
 				)
 			}
 		}
-		b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "support_line_value", Value: supportLine, Memo: "サポートラインの現在値"})
-		b.botStatuses = append(b.botStatuses, mysql.BotStatus{Type: "support_line_slope", Value: slope, Memo: "サポートラインの傾き"})
+		b.botStatuses = append(b.botStatuses, mysql.BotStatus{BotName: b.Config.BotName, Type: "support_line_value", Value: supportLine, Memo: "サポートラインの現在値"})
+		b.botStatuses = append(b.botStatuses, mysql.BotStatus{BotName: b.Config.BotName, Type: "support_line_slope", Value: slope, Memo: "サポートラインの傾き"})
 	}
 
 	entrySignal := (isLowerEntryArea || isBreakout) && isRising

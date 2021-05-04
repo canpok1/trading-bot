@@ -172,9 +172,10 @@ const (
 
 // BotInfo ボット情報
 type BotStatus struct {
-	Type  string
-	Value float64
-	Memo  string
+	BotName string
+	Type    string
+	Value   float64
+	Memo    string
 }
 
 func (BotStatus) TableName() string {

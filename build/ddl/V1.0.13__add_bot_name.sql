@@ -1,0 +1,4 @@
+ALTER TABLE bot_statuses
+ADD bot_name VARCHAR(255) NOT NULL DEFAULT 'default' FIRST,
+DROP PRIMARY KEY,
+ADD PRIMARY KEY (bot_name, type);

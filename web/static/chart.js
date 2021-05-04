@@ -16,6 +16,9 @@ async function draw(pair) {
         const baseURL = location.protocol + '//' + location.host;
 
         const botInfo = await fetchBotInfo(baseURL, pair)
+        if (!botInfo.markets.length) {
+            return
+        }
 
         const hasSellOrder = botInfo.statuses.sell_rate > 0;
 
