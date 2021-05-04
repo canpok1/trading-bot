@@ -252,19 +252,17 @@ func (b *Bot) trade(ctx context.Context) error {
 		}
 	}
 
-	traded, shouldLosscut, err := b.tradeForBuy(info)
+	err = b.tradeForBuy(info)
 	if err != nil {
 		return err
 	}
 
-	if traded {
-		info, err = b.getExchangeInfo(pair)
-		if err != nil {
-			return err
-		}
+	info, err = b.getExchangeInfo(pair)
+	if err != nil {
+		return err
 	}
 
-	if err := b.tradeForSell(info, shouldLosscut); err != nil {
+	if err := b.tradeForSell(info); err != nil {
 		return err
 	}
 
@@ -275,35 +273,20 @@ func (b *Bot) trade(ctx context.Context) error {
 	return nil
 }
 
-func (b *Bot) tradeForBuy(info *ExchangeInfo) (bool, bool, error) {
-	amount, shouldLosscut, err := b.calcBuyAmount(info)
+func (b *Bot) tradeForBuy(info *ExchangeInfo) error {
+	amount, err := b.calcBuyAmount(info)
 	if err != nil {
-		return false, shouldLosscut, err
+		return err
 	}
-	if !shouldLosscut {
-		if amount == 0 {
-			return false, shouldLosscut, err
-		}
-
-		// 成行買 → 約定待ち
-		if err := b.buyAndWaitForContract(info.Pair, amount); err != nil {
-			return false, shouldLosscut, err
-		}
+	if amount == 0 {
+		return err
 	}
 
-	// 未決済注文をキャンセル
-	openOrders, err := b.CoincheckCli.GetOpenOrders(info.Pair)
-	if err != nil {
-		return false, shouldLosscut, err
-	}
-	if err := b.cancel(openOrders); err != nil {
-		return false, shouldLosscut, err
-	}
-
-	return true, shouldLosscut, nil
+	// 成行買 → 約定待ち
+	return b.buyAndWaitForContract(info.Pair, amount)
 }
 
-func (b *Bot) tradeForSell(info *ExchangeInfo, shouldLosscut bool) error {
+func (b *Bot) tradeForSell(info *ExchangeInfo) error {
 	botStatus := mysql.BotStatus{
 		Type: "sell_rate", Value: -1, Memo: "約定待ちの売注文レート",
 	}
@@ -360,7 +343,7 @@ func (b *Bot) tradeForSell(info *ExchangeInfo, shouldLosscut bool) error {
 	}
 
 	// 指値売り
-	rate, amount, err := b.calcSellRateAndAmount(newInfo, shouldLosscut)
+	rate, amount, err := b.calcSellRateAndAmount(newInfo)
 	if err != nil {
 		return err
 	}
@@ -483,19 +466,17 @@ func (b *Bot) getExchangeInfo(pair *model.CurrencyPair) (*ExchangeInfo, error) {
 	}, nil
 }
 
-func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, bool, error) {
-	shouldLosscut := false
-
+func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, error) {
 	rates, err := b.MysqlCli.GetRates(info.Pair, &rateDuration)
 	if err != nil {
-		return 0, shouldLosscut, err
+		return 0, err
 	}
 
 	required := b.Config.TrendLinePeriod + b.Config.TrendLineOffset
 	if len(rates) < required {
 		b.Logger.Debug("skip buy (rate len:%s < SupportLine required:%d)", domain.Yellow("%d", len(rates)), required)
 		b.buyStandby = false
-		return 0, shouldLosscut, nil
+		return 0, nil
 	}
 
 	// レート上昇してる？
@@ -644,7 +625,7 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, bool, error) {
 	if newOrderJPY < buyJpyMin {
 		b.Logger.Debug("%s cannot sending buy order, jpy is too low (%.3f < min:%.3f)", domain.Red("NG"), newOrderJPY, buyJpyMin)
 		b.buyStandby = false
-		return 0, shouldLosscut, nil
+		return 0, nil
 	}
 
 	// 追加注文する余裕ある？
@@ -690,17 +671,12 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, bool, error) {
 		}
 		b.buyStandby = newStandby
 
-		if averagingDown && !canOrder {
-			b.Logger.Debug("%s (averagingDown:%v,canOrder:%v)", domain.Red("should losscut"), averagingDown, canOrder)
-			shouldLosscut = true
-		}
-
-		return 0, shouldLosscut, nil
+		return 0, nil
 	}
 	b.Logger.Debug("%s (entrySignal:%v, averagingDown:%v, canOrder:%v, tradePeriod:%v)",
 		"should buy", entrySignal, averagingDown, canOrder, tradePeriod)
 
-	return newOrderJPY, shouldLosscut, nil
+	return newOrderJPY, nil
 }
 
 func (b *Bot) buyAndWaitForContract(pair *model.CurrencyPair, amount float64) error {
@@ -800,7 +776,7 @@ func (b *Bot) cancel(orders []model.Order) error {
 	return nil
 }
 
-func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo, shouldLosscut bool) (rate float64, amount float64, err error) {
+func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo) (rate float64, amount float64, err error) {
 	amount = domain.Round(info.BalanceCurrency.Amount)
 
 	totalJPY, err := b.MysqlCli.GetAccountInfo(mysql.AccountInfoTypeTotalJPY)
@@ -814,9 +790,6 @@ func (b *Bot) calcSellRateAndAmount(info *ExchangeInfo, shouldLosscut bool) (rat
 
 	usedJPY := totalJPY - info.BalanceJPY.Amount
 	profit := totalJPY * b.Config.FundsRatioPerOrder * b.Config.TargetProfitPer
-	if shouldLosscut {
-		profit = 0
-	}
 	rate = (usedJPY + profit) / amount
 
 	return
