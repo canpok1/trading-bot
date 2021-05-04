@@ -285,7 +285,16 @@ func (b *Bot) tradeForBuy(info *ExchangeInfo) error {
 	}
 
 	// 成行買 → 約定待ち
-	return b.buyAndWaitForContract(info.Pair, amount)
+	if err := b.buyAndWaitForContract(info.Pair, amount); err != nil {
+		return err
+	}
+
+	openOrders, err := b.CoincheckCli.GetOpenOrders(info.Pair)
+	if err != nil {
+		return err
+	}
+
+	return b.cancel(openOrders)
 }
 
 func (b *Bot) tradeForSell(info *ExchangeInfo) error {
