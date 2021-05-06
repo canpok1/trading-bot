@@ -520,46 +520,55 @@ func (b *Bot) calcBuyAmount(info *ExchangeInfo) (float64, error) {
 		slope, intercept := trade.ResistanceLine2(rates, l-b.Config.TrendLinePeriod-b.Config.TrendLineOffset, l-b.Config.TrendLineOffset)
 		resistanceLines := trade.MakeLine(slope, intercept, len(rates))
 		resistanceLine := resistanceLines[len(resistanceLines)-1]
-		width := resistanceLine * b.Config.EntryAreaWidth
-		upper := resistanceLine + width
-		lower := resistanceLine
-
-		diff := info.SellRate - rates[len(rates)-1]
-		diffBorder := info.SellRate * b.Config.BreakoutRatio
-
-		isUpperEntryArea := (lower < info.SellRate && info.SellRate < resistanceLine+width)
-		isBreakout = isUpperEntryArea && diff > diffBorder
-		if isUpperEntryArea {
-			if isBreakout {
-				b.Logger.Debug(
-					"%s breakout (diff:%s > border:%s)(lower:%s < sellRate:%s < upper:%s)(width=%.3f * %.3f)",
-					domain.Green("OK"),
-					domain.Yellow("%.3f", diff), domain.Yellow("%.3f", diffBorder),
-					domain.Yellow("%.3f", lower), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
-					resistanceLine, b.Config.EntryAreaWidth,
-				)
-			} else {
-				b.Logger.Debug(
-					"%s not breakout (diff:%s <= border:%s)(lower:%s < sellRate:%s < upper:%s)(width=%.3f * %.3f)",
-					domain.Red("NG"),
-					domain.Yellow("%.3f", diff), domain.Yellow("%.3f", diffBorder),
-					domain.Yellow("%.3f", lower), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
-					resistanceLine, b.Config.EntryAreaWidth,
-				)
-			}
+		if slope < 0 {
+			b.Logger.Debug(
+				"%s not breakout (resistance line slope:%s < 0)",
+				domain.Red("NG"),
+				domain.Yellow("%.3f", slope),
+			)
+			isBreakout = false
 		} else {
-			if info.SellRate <= resistanceLine {
-				b.Logger.Debug(
-					"%s sellRate is not in upper entry area (sellRate:%s <= lower:%s)(width=%.3f * %.3f)",
-					domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", lower),
-					resistanceLine, b.Config.EntryAreaWidth,
-				)
+			width := resistanceLine * b.Config.EntryAreaWidth
+			upper := resistanceLine + width
+			lower := resistanceLine
+
+			diff := info.SellRate - rates[len(rates)-1]
+			diffBorder := info.SellRate * b.Config.BreakoutRatio
+
+			isUpperEntryArea := (lower < info.SellRate && info.SellRate < resistanceLine+width)
+			isBreakout = isUpperEntryArea && diff > diffBorder
+			if isUpperEntryArea {
+				if isBreakout {
+					b.Logger.Debug(
+						"%s breakout (diff:%s > border:%s)(lower:%s < sellRate:%s < upper:%s)(width=%.3f * %.3f)",
+						domain.Green("OK"),
+						domain.Yellow("%.3f", diff), domain.Yellow("%.3f", diffBorder),
+						domain.Yellow("%.3f", lower), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+						resistanceLine, b.Config.EntryAreaWidth,
+					)
+				} else {
+					b.Logger.Debug(
+						"%s not breakout (diff:%s <= border:%s)(lower:%s < sellRate:%s < upper:%s)(width=%.3f * %.3f)",
+						domain.Red("NG"),
+						domain.Yellow("%.3f", diff), domain.Yellow("%.3f", diffBorder),
+						domain.Yellow("%.3f", lower), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+						resistanceLine, b.Config.EntryAreaWidth,
+					)
+				}
 			} else {
-				b.Logger.Debug(
-					"%s sellRate is not in upper entry area (sellRate:%s >= upper:%s)(width=%.3f * %.3f)",
-					domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
-					resistanceLine, b.Config.EntryAreaWidth,
-				)
+				if info.SellRate <= resistanceLine {
+					b.Logger.Debug(
+						"%s sellRate is not in upper entry area (sellRate:%s <= lower:%s)(width=%.3f * %.3f)",
+						domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", lower),
+						resistanceLine, b.Config.EntryAreaWidth,
+					)
+				} else {
+					b.Logger.Debug(
+						"%s sellRate is not in upper entry area (sellRate:%s >= upper:%s)(width=%.3f * %.3f)",
+						domain.Red("NG"), domain.Yellow("%.3f", info.SellRate), domain.Yellow("%.3f", upper),
+						resistanceLine, b.Config.EntryAreaWidth,
+					)
+				}
 			}
 		}
 		b.botStatuses = append(b.botStatuses, mysql.BotStatus{BotName: b.Config.BotName, Type: "resistance_line_value", Value: resistanceLine, Memo: "レジスタンスラインの現在値"})
