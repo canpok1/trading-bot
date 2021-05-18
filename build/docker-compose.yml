@@ -10,6 +10,9 @@ services:
       MYSQL_PASSWORD: P@ssw0rd
     volumes:
       - db-store:/var/lib/mysql
+    networks:
+      - default
+      - trading-bot-network
   flyway:
     image: flyway/flyway
     command: -url=jdbc:mysql://db/trading-bot -user=root -password=T4g5Ucs6 -connectRetries=60 migrate
@@ -49,3 +52,6 @@ services:
       - ../configs/bot2.env
 volumes:
   db-store:
+networks:
+  trading-bot-network:
+    name: trading-bot-network
