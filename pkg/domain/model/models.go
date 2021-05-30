@@ -167,3 +167,13 @@ type Position struct {
 	OpenerOrder *Order
 	CloserOrder *Order
 }
+
+// Trade 取引
+type Trade struct {
+	ID        uint64
+	Pair      CurrencyPair
+	Rate      float64
+	Amount    float64
+	Side      OrderSide
+	CreatedAt time.Time
+}

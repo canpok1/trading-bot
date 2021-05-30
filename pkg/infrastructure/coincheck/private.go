@@ -9,6 +9,65 @@ import (
 	"trading-bot/pkg/domain/model"
 )
 
+func (c *Client) getTrades(p *model.CurrencyPair, limit int) ([]model.Trade, error) {
+	u, err := c.makeURL("/api/trades", map[string]string{
+		"pair":  p.String(),
+		"limit": fmt.Sprintf("%d", limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	type Pagination struct {
+		Limit int `json:"limit"`
+	}
+	type Trade struct {
+		ID        uint64    `json:"id"`
+		Amount    string    `json:"amount"`
+		Rate      float64   `json:"rate"`
+		Pair      string    `json:"pair"`
+		OrderType string    `json:"order_type"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+
+	var res struct {
+		Pagination Pagination `json:"pagination"`
+		Data       []Trade    `json:"data"`
+	}
+	if err := c.requestWithValidation(http.MethodGet, u, "", &res); err != nil {
+		return nil, err
+	}
+
+	trades := []model.Trade{}
+	for _, t := range res.Data {
+		amount, err := strconv.ParseFloat(t.Amount, 64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse response amount field of GetTrades, t: %v, p: %v; error: %w", t, p, err)
+		}
+		pair, err := model.ParseToCurrencyPair(t.Pair)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse response pair field of GetTrades, t: %v, p: %v; error: %w", t, p, err)
+		}
+		var side model.OrderSide
+		if t.OrderType == "buy" {
+			side = model.BuySide
+		} else {
+			side = model.SellSide
+		}
+
+		trades = append(trades, model.Trade{
+			ID:        t.ID,
+			Pair:      *pair,
+			Rate:      t.Rate,
+			Amount:    amount,
+			Side:      side,
+			CreatedAt: t.CreatedAt,
+		})
+	}
+
+	return trades, nil
+}
+
 // getOrderRate レート取得
 func (c *Client) getOrderRate(s model.OrderSide, p *model.CurrencyPair) (*model.OrderRate, error) {
 	t := "sell"

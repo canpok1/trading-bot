@@ -134,14 +134,32 @@ func (f *Fetcher) fetch(ctx context.Context, pair *model.CurrencyPair) error {
 	if err != nil {
 		return err
 	}
+	trades, err := f.CoincheckCli.GetTrades(pair, 100)
+	if err != nil {
+		return err
+	}
+
+	border := time.Now().Add(time.Duration(-f.Config.IntervalSeconds) * time.Second)
+	volumesSell := 0.0
+	volumesBuy := 0.0
+	for _, t := range trades {
+		if t.CreatedAt.Before(border) {
+			continue
+		}
+		if t.Side == model.SellSide {
+			volumesSell += t.Amount
+		} else {
+			volumesBuy += t.Amount
+		}
+	}
 
 	m := mysql.Market{
 		Pair:         pair.String(),
 		StoreRateAVG: storeRate.Rate,
 		ExRateSell:   sellRate.Rate,
 		ExRateBuy:    buyRate.Rate,
-		ExVolumeSell: 0,
-		ExVolumeBuy:  0,
+		ExVolumeSell: volumesSell,
+		ExVolumeBuy:  volumesBuy,
 		RecordedAt:   time.Now(),
 	}
 	f.Logger.Debug("%+v", m)

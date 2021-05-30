@@ -47,6 +47,10 @@ func NewPublicClient(logger *memory.Logger) *Client {
 	}
 }
 
+func (c *Client) GetTrades(p *model.CurrencyPair, limit int) ([]model.Trade, error) {
+	return c.getTrades(p, limit)
+}
+
 // GetStoreRate 販売所のレート取得
 func (c *Client) GetStoreRate(p *model.CurrencyPair) (*model.StoreRate, error) {
 	r, err := c.getRate(p)
