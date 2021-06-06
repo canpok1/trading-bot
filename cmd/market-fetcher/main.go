@@ -44,17 +44,20 @@ func main() {
 	}
 
 	logger.Info("pair: %s\n", config.TargetPair)
-	logger.Info("interval: %d sec\n", config.IntervalSeconds)
+	logger.Info("fetch interval: %d sec\n", config.IntervalSeconds)
+	logger.Info("clean interval: %d sec\n", config.CleanIntervalSeconds)
 	logger.Info("======================================")
 
 	coincheckCli := coincheck.NewPublicClient(&logger)
 	mysqlCli := mysql.NewClient(config.DB.UserName, config.DB.Password, config.DB.Host, config.DB.Port, config.DB.Name)
 	fetcher := NewFetcher(&config, coincheckCli, mysqlCli, &logger)
+	cleaner := NewCleaner(&config, mysqlCli, &logger)
 
 	rootCtx, cancel := context.WithCancel(context.Background())
 	errGroup, ctx := errgroup.WithContext(rootCtx)
 
 	errGroup.Go(fetcher.Fetch(ctx, pair))
+	errGroup.Go(cleaner.Clean(ctx, pair))
 	errGroup.Go(func() error {
 		defer cancel()
 		return watchSignal(ctx, &logger)
@@ -83,6 +86,11 @@ type Config struct {
 	TargetPair string `required:"true" split_words:"true"`
 	// 稼働間隔（秒）
 	IntervalSeconds int `required:"true" split_words:"true"`
+	// 削除の稼働間隔（秒）
+	CleanIntervalSeconds int `required:"true" split_words:"true"`
+	// 情報の有効期限（秒）
+	ExpireSeconds int `required:"true" split_words:"true"`
+
 	// DB設定
 	DB model.DB `required:"true" split_words:"true"`
 }
@@ -168,4 +176,43 @@ func (f *Fetcher) fetch(ctx context.Context, pair *model.CurrencyPair) error {
 	}
 
 	return nil
+}
+
+type Cleaner struct {
+	Config   *Config
+	MysqlCli *mysql.Client
+	Logger   *memory.Logger
+}
+
+func NewCleaner(config *Config, mysqlCli *mysql.Client, logger *memory.Logger) *Cleaner {
+	return &Cleaner{
+		Config:   config,
+		MysqlCli: mysqlCli,
+		Logger:   logger,
+	}
+}
+
+func (c *Cleaner) Clean(ctx context.Context, pair *model.CurrencyPair) func() error {
+	return func() error {
+		// 古い情報の削除
+		ticker := time.NewTicker(time.Duration(c.Config.CleanIntervalSeconds) * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := c.clean(ctx, pair); err != nil {
+					c.Logger.Error("failed to clean, error: %w", err)
+				}
+			case <-ctx.Done():
+				return nil
+			}
+		}
+	}
+}
+
+func (c *Cleaner) clean(ctx context.Context, pair *model.CurrencyPair) error {
+	err := c.MysqlCli.DeleteMarkets(pair, time.Duration(c.Config.ExpireSeconds)*time.Second)
+	c.Logger.Debug("cleaned records")
+
+	return err
 }

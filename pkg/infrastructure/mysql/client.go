@@ -370,6 +370,12 @@ func (c *Client) GetMarkets(p *model.CurrencyPair, d *time.Duration) (markets []
 	return
 }
 
+// DeleteMarkets
+func (c *Client) DeleteMarkets(p *model.CurrencyPair, expire time.Duration) error {
+	border := time.Now().Add(-1 * expire)
+	return c.db.Where("recorded_at < ?", border).Delete(&Market{}).Error
+}
+
 // AddEvent イベント情報を追加
 func (c *Client) AddEvent(e *Event) error {
 	return c.db.Create(&e).Error
