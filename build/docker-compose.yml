@@ -41,17 +41,6 @@ services:
       - ../configs/fetcher.env
     depends_on:
       - db
-  bot:
-    build:
-      context: ../
-      dockerfile: build/Dockerfile-bot
-    depends_on:
-      - db
-    env_file:
-      - ../configs/db.env
-      - ../configs/slack.env
-      - ../configs/exchange.env
-      - ../configs/bot2.env
 volumes:
   db-store:
 networks:
