@@ -10,6 +10,8 @@ services:
       MYSQL_PASSWORD: P@ssw0rd
     volumes:
       - db-store:/var/lib/mysql
+    ports:
+      - "13306:3306"
     networks:
       - default
       - trading-bot-network
