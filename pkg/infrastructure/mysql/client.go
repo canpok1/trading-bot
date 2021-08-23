@@ -373,7 +373,7 @@ func (c *Client) GetMarkets(p *model.CurrencyPair, d *time.Duration) (markets []
 // DeleteMarkets
 func (c *Client) DeleteMarkets(p *model.CurrencyPair, expire time.Duration) error {
 	border := time.Now().Add(-1 * expire)
-	return c.db.Where("recorded_at < ?", border).Delete(&Market{}).Error
+	return c.db.Where("pair = ? AND recorded_at < ?", p.String(), border).Delete(&Market{}).Error
 }
 
 // AddEvent イベント情報を追加

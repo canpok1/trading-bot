@@ -37,13 +37,18 @@ func main() {
 		logger.Error(err.Error())
 		return
 	}
-	pair, err := model.ParseToCurrencyPair(config.TargetPair)
-	if err != nil {
-		logger.Error(err.Error())
-		return
+
+	pairs := []*model.CurrencyPair{}
+	for _, s := range config.TargetPairs {
+		pair, err := model.ParseToCurrencyPair(s)
+		if err != nil {
+			logger.Error(err.Error())
+			return
+		}
+		pairs = append(pairs, pair)
 	}
 
-	logger.Info("pair: %s\n", config.TargetPair)
+	logger.Info("pairs: %v\n", config.TargetPairs)
 	logger.Info("fetch interval: %d sec\n", config.IntervalSeconds)
 	logger.Info("clean interval: %d sec\n", config.CleanIntervalSeconds)
 	logger.Info("======================================")
@@ -56,8 +61,10 @@ func main() {
 	rootCtx, cancel := context.WithCancel(context.Background())
 	errGroup, ctx := errgroup.WithContext(rootCtx)
 
-	errGroup.Go(fetcher.Fetch(ctx, pair))
-	errGroup.Go(cleaner.Clean(ctx, pair))
+	for _, pair := range pairs {
+		errGroup.Go(fetcher.Fetch(ctx, pair))
+		errGroup.Go(cleaner.Clean(ctx, pair))
+	}
 	errGroup.Go(func() error {
 		defer cancel()
 		return watchSignal(ctx, &logger)
@@ -83,7 +90,7 @@ func watchSignal(ctx context.Context, logger *memory.Logger) error {
 
 type Config struct {
 	// 対象コインペア
-	TargetPair string `required:"true" split_words:"true"`
+	TargetPairs []string `required:"true" split_words:"true"`
 	// 稼働間隔（秒）
 	IntervalSeconds int `required:"true" split_words:"true"`
 	// 削除の稼働間隔（秒）

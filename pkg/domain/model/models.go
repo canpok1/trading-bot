@@ -18,7 +18,7 @@ type CurrencyPair struct {
 	Settlement CurrencyType
 }
 
-// NewCurrencyPair 生成
+// ParseToCurrencyPair 文字列から生成
 func ParseToCurrencyPair(s string) (*CurrencyPair, error) {
 	splited := strings.Split(s, "_")
 	if len(splited) != 2 {
