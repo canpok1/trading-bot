@@ -418,11 +418,11 @@ func (c *Client) UpsertAccountInfo(t AccocuntInfoType, v float64) error {
 }
 
 // GetBotStatusAll
-func (c *Client) GetBotStatusAll(botName string) (map[string]float64, error) {
+func (c *Client) GetBotStatusAll(botName string, p *model.CurrencyPair) (map[string]float64, error) {
 	m := map[string]float64{}
 
 	rr := []BotStatus{}
-	err := c.db.Where("bot_name = ?", botName).Find(&rr).Error
+	err := c.db.Where("bot_name = ? AND pair = ?", botName, p.String()).Find(&rr).Error
 	if err != nil {
 		return m, err
 	}
