@@ -1,17 +1,17 @@
 const refreshIntervalSec = 10;
 const dataDurationMinute = 270;
 
-function init(pair) {
+function init(pair, id) {
     google.charts.load('current', { packages: ['corechart'] });
     google.charts.setOnLoadCallback(() => {
-        draw(pair);
+        draw(pair, id);
     });
     setInterval(draw, refreshIntervalSec * 1000, pair);
     console.log("refresh interval sec:" + refreshIntervalSec);
     console.log("data duration minute:" + dataDurationMinute);
 }
 
-async function draw(pair) {
+async function draw(pair, id) {
     try {
         const baseURL = location.protocol + '//' + location.host;
 
@@ -120,6 +120,8 @@ async function draw(pair) {
         const data = new google.visualization.arrayToDataTable(values);
 
         const options = {
+            title: pair,
+            chartArea: { top: 50, width: '85%', height: '80%' },
             hAxis: {
                 title: 'Time',
                 gridlines: {
@@ -130,30 +132,30 @@ async function draw(pair) {
                 }
             },
             vAxes: {
-                0: {
+                0: { title: 'Volume' },
+                1: {
                     title: 'Rate',
                     viewWindow: {
                         min: minRate * 0.99,
                         max: maxRate * 1.01
                     }
                 },
-                1: { title: 'Volume' },
             },
             backgroundColor: '#f1f8e9',
             pointSize: 1,
             seriesType: 'line',
             series: {
-                0: { type: 'line', targetAxisIndex: 0, color: '#000080' },    // レート
-                1: { type: 'line', targetAxisIndex: 0, color: '#ffa500' },    // サポートライン
-                2: { type: 'line', targetAxisIndex: 0, color: '#87ceeb' },    // サポートライン（短期）
-                3: { type: 'line', targetAxisIndex: 0, color: '#ffa500' },    // レジスタンスライン
-                4: { type: 'bars', targetAxisIndex: 1, color: '#ff0000' },    // 売り出来高
-                5: { type: 'bars', targetAxisIndex: 1, color: '#008000' },    // 買い出来高
-                6: { type: 'line', targetAxisIndex: 0, color: '#00bfff' },    // 約定待ち売レート
+                0: { type: 'line', targetAxisIndex: 1, color: '#000080' },    // レート
+                1: { type: 'line', targetAxisIndex: 1, color: '#ffa500' },    // サポートライン
+                2: { type: 'line', targetAxisIndex: 1, color: '#87ceeb' },    // サポートライン（短期）
+                3: { type: 'line', targetAxisIndex: 1, color: '#ffa500' },    // レジスタンスライン
+                4: { type: 'bars', targetAxisIndex: 0, color: '#ff0000' },    // 売り出来高
+                5: { type: 'bars', targetAxisIndex: 0, color: '#008000' },    // 買い出来高
+                6: { type: 'line', targetAxisIndex: 1, color: '#00bfff' },    // 約定待ち売レート
             }
         };
 
-        const chart = new google.visualization.ComboChart(document.getElementById('chart_div'));
+        const chart = new google.visualization.ComboChart(document.getElementById(id));
         chart.draw(data, options);
     } catch (e) {
         console.log(e);

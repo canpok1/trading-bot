@@ -13,9 +13,8 @@
 <body>
     <div class="container-fluid">
         <div class="row">
-            <main class="col" role="main">
-                <div id="chart_div" class="col-12" style='height: 600px;'></div>
-            </main>
+            <div id="chart_div_mona" class="col-md-6" style='height: 600px;'></div>
+            <div id="chart_div_plt" class="col-md-6" style='height: 600px;'></div>
         </div>
     </div>
 
@@ -32,7 +31,8 @@
 
     <script src="/static/chart.js"></script>
     <script>
-        init('{{.Pair}}', 'chart_div');
+        init('mona_jpy', 'chart_div_mona');
+        init('plt_jpy', 'chart_div_plt');
     </script>
 </body>
 

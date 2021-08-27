@@ -30,7 +30,6 @@
 	"runServices": [
 		"dev",
 		"db",
-		"adminer",
 		"flyway"
 	],
 	// Uncomment the next line if you want to keep your containers running after VS Code shuts down.

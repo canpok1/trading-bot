@@ -46,6 +46,7 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/", rootHandler).Methods(http.MethodGet)
 	r.HandleFunc("/dashboard/{pair}", dashboardHandler).Methods(http.MethodGet)
+	r.HandleFunc("/dashboard-summary", dashboardSummaryHandler).Methods(http.MethodGet)
 	r.HandleFunc("/api/{pair}", apiHandler(mysqlCli)).Methods(http.MethodGet).Queries("minute", "{minute:[0-9]+}")
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(wd+"/web/static/"))))
 
@@ -83,6 +84,20 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p.Pair = pair.String()
 	}
+
+	if err := t.Execute(w, p); err != nil {
+		panic(err.Error())
+	}
+}
+
+func dashboardSummaryHandler(w http.ResponseWriter, r *http.Request) {
+	t, err := template.ParseFiles("web/dashboard-summary.html")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	p := struct {
+	}{}
 
 	if err := t.Execute(w, p); err != nil {
 		panic(err.Error())
