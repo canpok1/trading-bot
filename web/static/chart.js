@@ -121,7 +121,7 @@ async function draw(pair, id) {
 
         const options = {
             title: pair,
-            chartArea: { top: 50, width: '85%', height: '80%' },
+            chartArea: { top: 50, width: '80%', height: '70%' },
             hAxis: {
                 title: 'Time',
                 gridlines: {
