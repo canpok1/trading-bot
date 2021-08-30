@@ -1,5 +1,8 @@
 const refreshIntervalSec = 10;
 const dataDurationMinute = 270;
+const backgroundColorDefault = '#f1f8e9';
+const backgroundColorUpTrend = '#afeeee';
+const backgroundColorDownTrend = '#ffc0cb';
 
 function init(pair, id) {
     google.charts.load('current', { packages: ['corechart'] });
@@ -17,6 +20,7 @@ async function draw(pair, id) {
 
         const botInfo = await fetchBotInfo(baseURL, pair)
         if (!botInfo.markets.length) {
+            console.log("botInfo.markets is empty");
             return
         }
 
@@ -54,6 +58,16 @@ async function draw(pair, id) {
             const b = botInfo.statuses.resistance_line_value - a * (botInfo.markets.length - 1);
             return a * index + b
         }
+
+        // 長期トレンドに合わせて背景色を変更
+        var backgroundColor = backgroundColorDefault;
+        if (botInfo.statuses.long_trend == 1) {
+            backgroundColor = backgroundColorUpTrend;
+        }
+        if (botInfo.statuses.long_trend == 2) {
+            backgroundColor = backgroundColorDownTrend;
+        }
+
 
         var minRate = 0.0;
         var maxRate = 0.0;
@@ -141,7 +155,10 @@ async function draw(pair, id) {
                     }
                 },
             },
-            backgroundColor: '#f1f8e9',
+            backgroundColor: backgroundColor,
+            chartArea: {
+                backgroundColor: backgroundColorDefault,
+            },
             pointSize: 1,
             seriesType: 'line',
             series: {
