@@ -28,12 +28,12 @@ async function draw(pair, id) {
 
         var values = [[
             'datetime',
-            'market', { 'type': 'string', 'role': 'style' },
             'support line',
             'support line short',
             'resistance line',
             'sell volume',
-            'buy volume'
+            'buy volume',
+            'market', { 'type': 'string', 'role': 'style' }
         ]];
         if (hasSellOrder) {
             values[0].push('sell order')
@@ -103,12 +103,12 @@ async function draw(pair, id) {
             }
             var value = [
                 datetime,
-                market.sell_rate, point,
                 calcSupportLine(index),
                 calcSupportLineShort(index),
                 calcResistanceLine(index),
                 market.sell_volume,
-                market.buy_volume
+                market.buy_volume,
+                market.sell_rate, point
             ];
             if (hasSellOrder) {
                 value.push(botInfo.statuses.sell_rate);
@@ -162,12 +162,12 @@ async function draw(pair, id) {
             pointSize: 1,
             seriesType: 'line',
             series: {
-                0: { type: 'line', targetAxisIndex: 1, color: '#000080' },    // レート
-                1: { type: 'line', targetAxisIndex: 1, color: '#ffa500' },    // サポートライン
-                2: { type: 'line', targetAxisIndex: 1, color: '#87ceeb' },    // サポートライン（短期）
-                3: { type: 'line', targetAxisIndex: 1, color: '#ffa500' },    // レジスタンスライン
-                4: { type: 'bars', targetAxisIndex: 0, color: '#ff0000' },    // 売り出来高
-                5: { type: 'bars', targetAxisIndex: 0, color: '#008000' },    // 買い出来高
+                0: { type: 'line', targetAxisIndex: 1, color: '#ffa500' },    // サポートライン
+                1: { type: 'line', targetAxisIndex: 1, color: '#87ceeb' },    // サポートライン（短期）
+                2: { type: 'line', targetAxisIndex: 1, color: '#ffa500' },    // レジスタンスライン
+                3: { type: 'bars', targetAxisIndex: 0, color: '#ff0000' },    // 売り出来高
+                4: { type: 'bars', targetAxisIndex: 0, color: '#008000' },    // 買い出来高
+                5: { type: 'line', targetAxisIndex: 1, color: '#000080' },    // レート
                 6: { type: 'line', targetAxisIndex: 1, color: '#00bfff' },    // 約定待ち売レート
             }
         };
