@@ -24,7 +24,7 @@ func (c *Client) getTrades(p *model.CurrencyPair, limit int) ([]model.Trade, err
 	type Trade struct {
 		ID        uint64    `json:"id"`
 		Amount    string    `json:"amount"`
-		Rate      float64   `json:"rate"`
+		Rate      string    `json:"rate"`
 		Pair      string    `json:"pair"`
 		OrderType string    `json:"order_type"`
 		CreatedAt time.Time `json:"created_at"`
@@ -48,6 +48,10 @@ func (c *Client) getTrades(p *model.CurrencyPair, limit int) ([]model.Trade, err
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse response pair field of GetTrades, t: %v, p: %v; error: %w", t, p, err)
 		}
+		var rate float64
+		if rate, err = strconv.ParseFloat(t.Rate, 32); err != nil {
+			return nil, fmt.Errorf("failed to parse response of GetTrades, t: %v, p: %v; error: %w", t, p, err)
+		}
 		var side model.OrderSide
 		if t.OrderType == "buy" {
 			side = model.BuySide
@@ -58,7 +62,7 @@ func (c *Client) getTrades(p *model.CurrencyPair, limit int) ([]model.Trade, err
 		trades = append(trades, model.Trade{
 			ID:        t.ID,
 			Pair:      *pair,
-			Rate:      t.Rate,
+			Rate:      rate,
 			Amount:    amount,
 			Side:      side,
 			CreatedAt: t.CreatedAt,
